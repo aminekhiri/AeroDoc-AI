@@ -1,0 +1,6 @@
+id,company,doc_type,year,language,filename,source_url,page_url,optional,status,size_mb,sha256
+airbus_urd_2023,Airbus,annual_report,2023,en,airbus_urd_2023_en.pdf,https://www.airbus.com/sites/g/files/jlcbta136/files/2024-03/Airbus-Universal-Registration-Document-2023.pdf,https://www.airbus.com/en/investors,False,ok,5.98,484324055280fc0bd396e3c1d6ea646574369b61e1b64749c4065827b19a0e60
+easa_cs25_amdt25,EASA,regulation,2021,en,easa_cs25_amendment25_en.pdf,https://www.easa.europa.eu/en/downloads/129017/en,https://www.easa.europa.eu/en/document-library/easy-access-rules,False,ok,25.21,852ea830645b281d71376984319004e9e88be8c9859c8551ad9415adca848dd1
+safran_urd_2025,Safran,annual_report,2025,en,safran_urd_2025_en.pdf,,https://www.safran-group.com/fr/finance/publications-resultats,False,manual,,
+thales_urd_2025,Thales,annual_report,2025,en,thales_urd_2025_en.pdf,,https://www.thalesgroup.com,False,manual,,
+latecoere_urd_2025,Latecoere,annual_report,2025,fr,latecoere_urd_2025_fr.pdf,,https://www.latecoere.aero/finance/rapports-annuels-et-semestriels/,True,manual,,
