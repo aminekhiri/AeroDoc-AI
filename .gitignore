@@ -26,3 +26,6 @@ chroma/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Fichiers de verrouillage Office
+~$*
