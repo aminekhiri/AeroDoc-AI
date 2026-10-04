@@ -1,8 +1,6 @@
 # Données (PDF d'entreprise et fichiers générés)
 data/raw/*
-data/processed/*
 !data/raw/.gitkeep
-!data/processed/.gitkeep
 
 # Python
 __pycache__/
