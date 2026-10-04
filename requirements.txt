@@ -1,0 +1,6 @@
+llama-index-core>=0.12
+llama-index-embeddings-huggingface
+llama-index-vector-stores-postgres
+llama-index-readers-file
+sentence-transformers
+python-dotenv

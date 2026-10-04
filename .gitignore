@@ -12,6 +12,7 @@ venv/
 # Secrets (clés d'API)
 .env
 .env.*
+!.env.example
 
 # Bases de données et suivi d'expériences
 *.duckdb
