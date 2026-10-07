@@ -9,8 +9,8 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
 - **Mesure de référence** (pages attendues auditées, voir section 8), recall@5 sur 15 questions :
   - `multilingual-e5-small` : **12/15 = 80,0 %**, MRR 0,622
   - `bge-m3` : **13/15 = 86,7 %**, MRR 0,756
-- **Choix du modèle : pas encore décidé.** Le `.env` pointe actuellement sur `BAAI/bge-m3` (changé pour le test, pas modifié depuis). Deux tables existent dans pgvector, une par modèle.
-- **À faire en priorité** : décider du modèle, comprendre les 2 questions ratées par les deux modèles (q11, q15), puis étape 3 (SQL et agents).
+- **Modèle d'embedding retenu : `BAAI/bge-m3`** (décision du 7 octobre, section 9). Le `.env` est déjà dessus. La table `e5-small` est conservée pour comparer plus tard.
+- **À faire en priorité** : étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
 
 ---
 
@@ -191,11 +191,28 @@ Lecture :
 - **Durées sur le GPU** : e5-small, 182 s au total ; bge-m3, environ 4 min 20 s d'embeddings (820 s au total, téléchargement du modèle de 2,3 Go compris).
 - **Incident** : le premier essai avec bge-m3 a échoué, disque plein (2 Go libres) pendant le téléchargement du modèle. Le dossier de cache du modèle existait mais était vide, ce qui avait fait croire à tort qu'il était déjà téléchargé. La base n'avait pas été touchée. Nouvel essai réussi après avoir libéré de la place (14 Go libres). Sous Windows sans mode développeur, le cache Hugging Face n'utilise pas de liens symboliques et prend plus de place.
 
+## 9. Décision : `bge-m3` retenu (7 octobre)
+
+**Choix : `BAAI/bge-m3`** (1024 dimensions), table pgvector `data_chunks`. Le `.env` est déjà configuré dessus.
+
+Raisons :
+- **Meilleur classement** : le bon passage est en 1re position 10 fois sur 15 (contre 7), MRR 0,756 (contre 0,622).
+- **Meilleur en français** : 6/7 (contre 5/7) ; en anglais, les deux font 7/8. Les documents sont surtout en anglais, mais les questions sont souvent posées en français.
+- **Coût de production jugé acceptable.**
+
+Réserves, pour garder la mémoire de ce qui n'est pas prouvé :
+- L'écart de **recall@5** n'est que d'une question (13/15 contre 12/15) et change de sens selon la version de la référence : la décision repose sur le **classement** (MRR, 1re position), pas sur le recall.
+- Le coût en production n'a pas été mesuré : le modèle pèse 2,3 Go (contre 470 Mo) et la latence d'une question sur CPU, pour Cloud Run, n'a pas été testée.
+
+Autres décisions :
+- **La table `data_chunks_e5` (e5-small) est conservée.** Elle ne coûte rien et permettra de comparer les deux modèles avec un reranker.
+- **q11 et q15 sont laissées de côté** : candidates naturelles pour un reranker ou une recherche hybride, à tester plus tard. Elles ne bloquent pas la suite.
+
 ---
 
 ## Pistes pour améliorer le retrieval
 
-- Comprendre pourquoi q11 et q15 sont ratées par les deux modèles (voir les passages remontés avec `--verbose`).
+- Tester un **reranker** et/ou une **recherche hybride** (vectorielle et mots-clés), en commençant par q11 et q15, avec `bge-m3` puis `e5-small` pour comparer.
 - Filtrer les passages « bruit » (en-têtes de page, numéros) : ils remontent dans les résultats et le filtre actuel (plus de 50 caractères) les laisse passer.
 - Agrandir le jeu de questions (30 à 40 dans la roadmap) pour pouvoir départager les modèles.
 - Essayer d'autres tailles de passages (`CHUNK_SIZE`, `CHUNK_OVERLAP`).
@@ -207,15 +224,17 @@ Lecture :
 - [ ] Pousser `main` : `git push --force-with-lease=main:188d06a origin main`.
 - [ ] Supprimer la branche `feature/extract-file` sur GitHub (elle contient encore les PDF) et les branches locales `feature/extract-file` et `backup/avant-nettoyage`.
 - [x] Commiter `src/eval_retrieval.py`, `data/retrieval_questions.csv` et `data/eval/`.
-- [ ] Choisir le modèle d'embedding (e5-small ou bge-m3), puis aligner `.env.example`, `src/config.py` et la base.
-- [ ] Améliorer le recall@5 (voir les pistes).
+- [x] Choisir le modèle d'embedding : `bge-m3` retenu (section 9). `.env` et base alignés.
+- [ ] Aligner les valeurs par défaut sur `bge-m3` : `src/config.py` et `.env.example` indiquent encore `e5-small` (384 dimensions). Quelqu'un qui clone le dépôt aurait un autre modèle que le vôtre.
+- [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
 
 ## Historique des commits (local)
 
 ```
-(ce commit) eval: baseline results e5-small vs bge-m3
+(ce commit) docs: record bge-m3 as the chosen embedding model
+e7f2bc3 eval: baseline results e5-small vs bge-m3
 9dc7c21 eval: audit reference pages (model-independent search)
 d6790a5 eval: add retrieval evaluation script
 48b2a37 chore: remove hardcoded database credentials
