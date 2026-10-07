@@ -17,12 +17,20 @@ EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
 
+def _required(name: str) -> str:
+    """Read a mandatory variable from the environment (.env), with no default."""
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} is not set. Copy .env.example to .env and fill it in.")
+    return value
+
+
 PG = {
     "host": os.getenv("PG_HOST", "localhost"),
     "port": os.getenv("PG_PORT", "5432"),
-    "user": os.getenv("PG_USER", "aerodoc"),
-    "password": os.getenv("PG_PASSWORD", "aerodoc"),
-    "database": os.getenv("PG_DB", "aerodoc"),
+    "user": _required("PG_USER"),
+    "password": _required("PG_PASSWORD"),
+    "database": _required("PG_DB"),
 }
 PG_TABLE = os.getenv("PG_TABLE", "chunks")
 
