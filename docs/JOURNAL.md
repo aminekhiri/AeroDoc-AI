@@ -225,7 +225,7 @@ Autres décisions :
 - [ ] Supprimer la branche `feature/extract-file` sur GitHub (elle contient encore les PDF) et les branches locales `feature/extract-file` et `backup/avant-nettoyage`.
 - [x] Commiter `src/eval_retrieval.py`, `data/retrieval_questions.csv` et `data/eval/`.
 - [x] Choisir le modèle d'embedding : `bge-m3` retenu (section 9). `.env` et base alignés.
-- [ ] Aligner les valeurs par défaut sur `bge-m3` : `src/config.py` et `.env.example` indiquent encore `e5-small` (384 dimensions). Quelqu'un qui clone le dépôt aurait un autre modèle que le vôtre.
+- [x] Valeurs par défaut alignées sur `bge-m3` (1024 dimensions) dans `src/config.py` et `.env.example`. Le modèle `e5-small` reste indiqué en commentaire comme alternative légère.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
@@ -233,7 +233,8 @@ Autres décisions :
 ## Historique des commits (local)
 
 ```
-(ce commit) docs: record bge-m3 as the chosen embedding model
+(ce commit) config: default to bge-m3
+d0c7e68 docs: record bge-m3 as the chosen embedding model
 e7f2bc3 eval: baseline results e5-small vs bge-m3
 9dc7c21 eval: audit reference pages (model-independent search)
 d6790a5 eval: add retrieval evaluation script

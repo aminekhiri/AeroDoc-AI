@@ -10,8 +10,8 @@ from llama_index.vector_stores.postgres import PGVectorStore
 load_dotenv()
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data/raw"))
-EMBED_MODEL = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
-EMBED_DIM = int(os.getenv("EMBED_DIM", "384"))
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 EMBED_MAX_LENGTH = int(os.getenv("EMBED_MAX_LENGTH", "512"))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
