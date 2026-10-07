@@ -20,6 +20,33 @@ AeroDoc-AI est un assistant intelligent (RAG & Text-to-SQL) conçu pour interrog
 *   **API & Déploiement** : FastAPI, Docker, Google Cloud Run
 *   **Interface** : Streamlit (Optionnel)
 
+## 📁 Structure du projet
+
+```
+AeroDoc-AI/
+├── src/
+│   ├── config.py        # configuration partagée (modèle d'embedding, pgvector)
+│   ├── ingest.py        # PDF -> passages -> embeddings -> pgvector
+│   └── search.py        # test de recherche (top-k passages d'une question)
+├── scripts/
+│   └── download_corpus.py   # télécharge les PDF et écrit data/manifest.csv
+├── data/
+│   ├── raw/             # PDF du corpus (non suivis par Git)
+│   └── manifest.csv     # liste des documents du corpus
+├── docs/                # roadmap et documentation
+├── docker-compose.yml   # base Postgres + pgvector
+├── requirements.txt
+└── .env.example         # variables d'environnement (copier vers .env)
+```
+
+Les commandes se lancent depuis la racine du projet :
+
+```
+python scripts/download_corpus.py
+python src/ingest.py --reset
+python src/search.py "votre question" --k 5
+```
+
 ## 🗺️ Roadmap du Projet
 
 Ce projet est conçu pour être réalisé en itérations courtes :
