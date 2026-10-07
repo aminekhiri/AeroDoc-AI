@@ -1,4 +1,4 @@
-"""AeroDoc-AI - shared configuration (embedding model + pgvector store)."""
+"""AeroDoc-AI - shared configuration (embedding model, pgvector store, Mistral LLM)."""
 import os
 from pathlib import Path
 
@@ -16,6 +16,12 @@ EMBED_MAX_LENGTH = int(os.getenv("EMBED_MAX_LENGTH", "512"))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
+
+# Answer generation (Mistral API). The key is read from .env and never printed.
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))  # 0 = most faithful to the sources
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "700"))
 
 def _required(name: str) -> str:
     """Read a mandatory variable from the environment (.env), with no default."""
@@ -47,7 +53,8 @@ def get_device() -> str:
 
 
 def setup_settings() -> None:
-    """Local embeddings only, no LLM needed at this stage."""
+    """Local embeddings. No LLM here: ingestion, search and evaluation do not need one
+    (the answer step builds its own with get_llm())."""
     device = get_device()
     is_e5 = "e5" in EMBED_MODEL.lower()
     print(f"[embed] model={EMBED_MODEL} dim={EMBED_DIM} device={device} "
@@ -63,6 +70,20 @@ def setup_settings() -> None:
         text_instruction="passage: " if is_e5 else None,
     )
     Settings.llm = None
+
+
+def get_llm():
+    """Mistral chat model used to write the final answer (needs MISTRAL_API_KEY in .env)."""
+    if not MISTRAL_API_KEY:
+        raise RuntimeError("MISTRAL_API_KEY is not set. Add it to .env (see .env.example).")
+    from llama_index.llms.mistralai import MistralAI
+
+    return MistralAI(
+        model=LLM_MODEL,
+        api_key=MISTRAL_API_KEY,
+        temperature=LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS,
+    )
 
 
 def get_vector_store() -> PGVectorStore:
