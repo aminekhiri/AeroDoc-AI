@@ -2,15 +2,16 @@
 
 Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil de l'eau.
 
-## État actuel (7 octobre 2026)
+## État actuel (8 octobre 2026)
 
-- **Étape de la roadmap** : fin de l'étape 2 (Ingestion & RAG). La recherche fonctionne, sans LLM pour l'instant.
+- **Étape de la roadmap** : fin de l'étape 2 (Ingestion & RAG) : la recherche fonctionne et le LLM (Gemini) écrit des réponses avec citations (`src/ask.py`, section 10). Pas encore de routeur ni de SQL.
 - **Corpus** : 4 PDF, 2551 pages, 5867 passages indexés.
 - **Mesure de référence** (pages attendues auditées, voir section 8), recall@5 sur 15 questions :
   - `multilingual-e5-small` : **12/15 = 80,0 %**, MRR 0,622
   - `bge-m3` : **13/15 = 86,7 %**, MRR 0,756
 - **Modèle d'embedding retenu : `BAAI/bge-m3`** (décision du 7 octobre, section 9). Le `.env` est déjà dessus. La table `e5-small` est conservée pour comparer plus tard.
-- **À faire en priorité** : étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
+- **LLM** : Google Gemini, modèle `gemini-3.8-flash` (Mistral abandonné : limite de débit sur le compte). Testé sur 2 questions seulement, voir section 10.
+- **À faire en priorité** : évaluer les réponses sur les 15 questions, puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
 
 ---
 
@@ -73,7 +74,7 @@ Base de données : Postgres + pgvector, lancée avec `docker compose up -d` (con
 ## 6. Organisation des dossiers (7 octobre)
 
 ```
-src/       config.py, ingest.py, search.py, eval_retrieval.py
+src/       config.py, ingest.py, search.py, ask.py, eval_retrieval.py
 scripts/   download_corpus.py
 data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, eval/
 docs/      roadmap, ce journal
@@ -208,10 +209,61 @@ Autres décisions :
 - **La table `data_chunks_e5` (e5-small) est conservée.** Elle ne coûte rien et permettra de comparer les deux modèles avec un reranker.
 - **q11 et q15 sont laissées de côté** : candidates naturelles pour un reranker ou une recherche hybride, à tester plus tard. Elles ne bloquent pas la suite.
 
+## 10. Génération de réponses avec un LLM (7 et 8 octobre)
+
+### Ce qui a été fait
+
+Nouveau script `src/ask.py` : une question, puis
+
+1. recherche des 5 passages les plus proches dans pgvector (avec `bge-m3`) ;
+2. construction d'un prompt avec ces passages numérotés `[1]`, `[2]`… (document et page) ;
+3. appel au LLM, qui écrit la réponse ;
+4. affichage de la réponse, puis des sources avec leur score. Une `*` marque celles que la réponse a citées.
+
+Règles du prompt : répondre **uniquement** à partir des sources, citer `[n]` après chaque information, reprendre les chiffres avec leur unité et leur année, répondre dans la langue de la question, et dire « Je ne trouve pas cette information dans les documents » si les sources ne contiennent pas la réponse (c'est la promesse du README).
+
+Options : `--k` (nombre de passages donnés au LLM) et `--show-prompt` (affiche le prompt sans appeler le LLM, utile pour déboguer sans clé).
+
+```
+.venv\Scripts\Activate.ps1
+python src/ask.py "Combien d'avions Airbus a-t-il livrés en 2023 ?"
+```
+
+Il faut activer le `.venv` (sinon : `No module named 'llama_index'`) et lancer Docker (`docker compose up -d`).
+
+### Mistral abandonné, Gemini retenu
+
+- Première version avec **Mistral** (commit `6ba7861`, dont le message parle de « api key » : aucune clé n'y est, elle reste dans le `.env`). Premier appel refusé : **erreur 429 « Rate limit exceeded »**, une limite du compte (forfait gratuit probable), pas un bug du code.
+- Passage à **Google Gemini** (paquet `llama-index-llms-google-genai`). Le code était déjà centralisé : seuls les noms ont changé. `MISTRAL_API_KEY` devient `GEMINI_API_KEY` ; `LLM_MODEL`, `LLM_TEMPERATURE` et `LLM_MAX_TOKENS` ne changent pas de nom. Paquets Mistral désinstallés.
+- Modèle : `gemini-3.7-flash` d'abord (défaut du paquet), qui a répondu **503 « high demand »** après ses 3 essais automatiques (surcharge côté Google, passagère). Remplacé par **`gemini-3.8-flash`**, qui répond. Le modèle se change dans le `.env`, sans toucher au code.
+
+### Points techniques à retenir
+
+- Créer le client Gemini **fait déjà un appel réseau** : la bibliothèque vérifie que le modèle existe. Une clé ou un nom de modèle faux échoue donc dès le début, et le message d'erreur est expliqué par `ask.py`.
+- Les modèles `gemini-3` peuvent refuser une température imposée : le code ne l'envoie pas pour eux.
+- `LLM_MAX_TOKENS` passe de 700 à 2048 : les tokens de « réflexion » de Gemini comptent dans la limite et pourraient couper la réponse.
+- La bibliothèque réessaie 3 fois toute seule en cas d'erreur : le mécanisme de réessai écrit à la main a été supprimé.
+- Conseils affichés selon l'erreur : quota (429), modèle introuvable (404), clé refusée (400, 401, 403).
+- Le premier lancement semble figé : le chargement de `transformers` prend 10 à 60 s sans rien afficher. Des messages de progression ont été ajoutés.
+
+### Tests faits (2 questions, à la main)
+
+| Question | Résultat |
+|---|---|
+| « Combien d'avions Airbus a-t-il livrés en 2023 ? » | **735 avions commerciaux**, répartis en A220 : 68, A320 : 571, A330 : 32, A350 : 64, plus 8 A400M. Les chiffres ont été relus dans le PDF (p.44 et p.171) : exacts, et 68 + 571 + 32 + 64 = 735. Les citations pointent vers les bonnes pages. |
+| « Quel est le prix de l'action Boeing aujourd'hui ? » (hors corpus) | « Je ne trouve pas cette information dans les documents. » Aucune invention, aucune source citée. Les scores des passages remontés sont bas (0,52 à 0,56, contre 0,69 à 0,73 pour une question avec réponse). |
+
+### Limites
+
+- Seulement **2 questions** testées. La qualité des réponses n'est pas encore mesurée de façon systématique (chiffre exact, citation correcte, refus quand il le faut) : `eval_retrieval.py` ne mesure que la recherche, pas la réponse du LLM.
+- Chaque question envoie la question et 5 passages à l'API de Google. Sans risque pour des documents publics, à reconsidérer pour des documents confidentiels.
+- Idée non faite : un **seuil de score** en dessous duquel on répond « je ne sais pas » sans appeler le LLM (économise un appel et supprime le risque d'invention). À calibrer sur davantage de questions.
+
 ---
 
 ## Pistes pour améliorer le retrieval
 
+- Ajouter un **seuil de score** : en dessous, répondre « je ne sais pas » sans appeler le LLM (à calibrer sur plus de questions).
 - Tester un **reranker** et/ou une **recherche hybride** (vectorielle et mots-clés), en commençant par q11 et q15, avec `bge-m3` puis `e5-small` pour comparer.
 - Filtrer les passages « bruit » (en-têtes de page, numéros) : ils remontent dans les résultats et le filtre actuel (plus de 50 caractères) les laisse passer.
 - Agrandir le jeu de questions (30 à 40 dans la roadmap) pour pouvoir départager les modèles.
@@ -226,6 +278,8 @@ Autres décisions :
 - [x] Commiter `src/eval_retrieval.py`, `data/retrieval_questions.csv` et `data/eval/`.
 - [x] Choisir le modèle d'embedding : `bge-m3` retenu (section 9). `.env` et base alignés.
 - [x] Valeurs par défaut alignées sur `bge-m3` (1024 dimensions) dans `src/config.py` et `.env.example`. Le modèle `e5-small` reste indiqué en commentaire comme alternative légère.
+- [x] Brancher un LLM (Gemini) et générer des réponses avec citations (section 10).
+- [ ] Évaluer les réponses du LLM sur les 15 questions (chiffre exact, citation correcte, refus hors corpus).
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
@@ -233,7 +287,10 @@ Autres décisions :
 ## Historique des commits (local)
 
 ```
-(ce commit) config: default to bge-m3
+(ce commit) docs: journal, LLM generation with Gemini
+bb1cd00 feat: switch answer generation from Mistral to Gemini
+6ba7861 add: implmentation of mistral LLM + api key
+18fe1a1 config: default to bge-m3
 d0c7e68 docs: record bge-m3 as the chosen embedding model
 e7f2bc3 eval: baseline results e5-small vs bge-m3
 9dc7c21 eval: audit reference pages (model-independent search)
