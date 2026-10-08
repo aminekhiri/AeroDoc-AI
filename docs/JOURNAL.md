@@ -10,8 +10,9 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
   - `multilingual-e5-small` : **12/15 = 80,0 %**, MRR 0,622
   - `bge-m3` : **13/15 = 86,7 %**, MRR 0,756
 - **Modèle d'embedding retenu : `BAAI/bge-m3`** (décision du 7 octobre, section 9). Le `.env` est déjà dessus. La table `e5-small` est conservée pour comparer plus tard.
-- **LLM** : Google Gemini, modèle `gemini-3.8-flash` (Mistral abandonné : limite de débit sur le compte). Testé sur 2 questions seulement, voir section 10.
-- **À faire en priorité** : évaluer les réponses sur les 15 questions, puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
+- **LLM** : Google Gemini, modèle **`gemini-3.5-flash-lite`** retenu pour l'instant (limites larges, bien pour les tests ; Mistral abandonné). Voir sections 10 et 11.
+- **Évaluation des réponses** (15 questions + 2 hors corpus, section 11) : **13/15 OK** ; les 2 autres sont les misses de la recherche (q11 : refus honnête, q15 : réponse partielle). Refus hors corpus : 2/2 corrects (en deux lancements différents).
+- **À faire en priorité** : corriger le prompt pour que les refus ne citent aucune source, puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
 
 ---
 
@@ -74,9 +75,9 @@ Base de données : Postgres + pgvector, lancée avec `docker compose up -d` (con
 ## 6. Organisation des dossiers (7 octobre)
 
 ```
-src/       config.py, ingest.py, search.py, ask.py, eval_retrieval.py
+src/       config.py, ingest.py, search.py, ask.py, eval_retrieval.py, eval_answers.py
 scripts/   download_corpus.py
-data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, eval/
+data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, out_of_scope_questions.csv, eval/
 docs/      roadmap, ce journal
 ```
 
@@ -235,7 +236,7 @@ Il faut activer le `.venv` (sinon : `No module named 'llama_index'`) et lancer D
 
 - Première version avec **Mistral** (commit `6ba7861`, dont le message parle de « api key » : aucune clé n'y est, elle reste dans le `.env`). Premier appel refusé : **erreur 429 « Rate limit exceeded »**, une limite du compte (forfait gratuit probable), pas un bug du code.
 - Passage à **Google Gemini** (paquet `llama-index-llms-google-genai`). Le code était déjà centralisé : seuls les noms ont changé. `MISTRAL_API_KEY` devient `GEMINI_API_KEY` ; `LLM_MODEL`, `LLM_TEMPERATURE` et `LLM_MAX_TOKENS` ne changent pas de nom. Paquets Mistral désinstallés.
-- Modèle : `gemini-3.7-flash` d'abord (défaut du paquet), qui a répondu **503 « high demand »** après ses 3 essais automatiques (surcharge côté Google, passagère). Remplacé par **`gemini-3.8-flash`**, qui répond. Le modèle se change dans le `.env`, sans toucher au code.
+- Modèle : `gemini-3.7-flash` d'abord (défaut du paquet), qui a répondu **503 « high demand »** après ses 3 essais automatiques (surcharge côté Google, passagère). Remplacé par **`gemini-3.8-flash`**, qui répond. Le modèle se change dans le `.env`, sans toucher au code. *(Le modèle retenu a ensuite changé : `gemini-3.5-flash-lite`, section 11.)*
 
 ### Points techniques à retenir
 
@@ -255,14 +256,66 @@ Il faut activer le `.venv` (sinon : `No module named 'llama_index'`) et lancer D
 
 ### Limites
 
-- Seulement **2 questions** testées. La qualité des réponses n'est pas encore mesurée de façon systématique (chiffre exact, citation correcte, refus quand il le faut) : `eval_retrieval.py` ne mesure que la recherche, pas la réponse du LLM.
+- Seulement **2 questions** testées à la main à ce stade. *(Mesure systématique faite ensuite : section 11.)*
 - Chaque question envoie la question et 5 passages à l'API de Google. Sans risque pour des documents publics, à reconsidérer pour des documents confidentiels.
 - Idée non faite : un **seuil de score** en dessous duquel on répond « je ne sais pas » sans appeler le LLM (économise un appel et supprime le risque d'invention). À calibrer sur davantage de questions.
+
+## 11. Évaluation des réponses du LLM (8 octobre)
+
+### Le script `src/eval_answers.py`
+
+Il mesure la **réponse** du LLM (`eval_retrieval.py` ne mesurait que la recherche). Une question = **un appel LLM**, avec la même recherche et le même prompt qu'`ask.py`. Les contrôles sont automatiques, sans deuxième LLM comme juge :
+
+- **Question du corpus** : la réponse contient l'un des mots-clés de la colonne `answer_keys` de `data/retrieval_questions.csv`, **et** cite (`[n]`) une source qui vient d'une page attendue (la référence auditée de la section 8).
+- **Question hors corpus** (`data/out_of_scope_questions.csv`) : la réponse dit « je ne trouve pas ».
+- Les mots-clés tolèrent le formatage des nombres : `22_136|22_1` accepte « 22,136 », « 22 136 » et « 22,1 » (`_` = un séparateur, `~` = séparateur facultatif, `|` = alternatives).
+- Garde-fous : plafond dur d'appels (`--max-calls`, 10 par défaut, vérifié **avant** tout appel), pause entre les appels, arrêt après 2 erreurs d'API de suite, et `--dry-run` pour tester la recherche sans rien dépenser.
+
+```
+python src/eval_answers.py --dry-run                       # sans appel LLM
+python src/eval_answers.py                                 # 8 questions + 2 hors corpus = 10 appels
+python src/eval_answers.py --ids q01,q02,...,q15 --max-calls 17 --out data/eval/<nom>.csv
+```
+
+Verdicts : `OK`, `BONNE REPONSE, CITATION FAUSSE`, `REPONSE FAUSSE`, `REFUS (page non retrouvee)` (le modèle refuse parce que la recherche n'a pas ramené la bonne page : ce n'est pas une faute du LLM), `REFUS A TORT`, `N'A PAS REFUSE`, `ERREUR API`.
+
+### Historique des essais (3 modèles Gemini)
+
+| Essai | Questions évaluées | Résultat | Fichier dans `data/eval/` |
+|---|---|---|---|
+| `gemini-3.8-flash`, 10 questions | 3/10 | 3/3 OK ; **503 « high demand »** sur q01, q09, q11, arrêt du script | `answers_gemini-3.8-flash_2026-10-08.csv` |
+| `gemini-3.6-flash`, 10 questions | 6/10 | 5 OK + q11 refusée ; **429 « quota dépassé »** sur q12, q13, arrêt | `answers_gemini-3.6-flash_2026-10-08.csv` |
+| `gemini-3.5-flash-lite`, 10 questions | **10/10** | **7/8** du corpus OK + **2/2** refus corrects | `answers_gemini-3.5-flash-lite_2026-10-08.csv` |
+| `gemini-3.5-flash-lite`, 15 + 2 questions | 16/17 | voir ci-dessous ; **429** sur le 17e appel (o02) | `answers_gemini-3.5-flash-lite_15q_2026-10-08.csv` |
+
+Les essais `3.8` et `3.6` se sont arrêtés sur des problèmes de capacité ou de quota, pas sur de mauvaises réponses : on ne peut donc pas comparer leur qualité à celle de `3.5-flash-lite`.
+
+### Résultats finaux (`gemini-3.5-flash-lite`, 15 questions du corpus + 2 hors corpus)
+
+- **13/15 OK** (bonne réponse et bonne citation) : q01 à q10, q12, q13, q14.
+- **q11 : refus** (« Je ne trouve pas cette information »). La recherche n'avait pas remonté la bonne page (miss connu des deux modèles d'embedding). Le comportement du LLM est correct.
+- **q15 : réponse partielle, citation fausse.** Le PDF dit « applicable to **turbine powered** Large Aeroplanes » ; le modèle répond « aux grands aéronefs » sans le « turbine powered », et ne cite pas la p.51 (autre miss de la recherche).
+- **Hors corpus : o01 (Boeing) refusée correctement.** o02 (Ligue des champions) : 429 à ce lancement, mais refusée correctement lors du lancement à 10 questions avec le même modèle : **2 refus corrects sur 2** au total, jamais dans le même lancement.
+- Vérifié à la main contre les PDF : q08 (1 328 M€ d'autofinancement R&D, cohérent avec « over €1 billion »), q10 (65 % de services), q12, q13, q14.
+
+Les deux questions non réussies sont **les deux misses de la recherche** (q11, q15) : le LLM ne s'est pas trompé sur ce qu'il avait, c'est la recherche qui ne lui a pas donné la bonne page.
+
+### Défauts constatés
+
+- **Les refus citent des sources** : « Je ne trouve pas cette information dans les documents [1][2][3][4][5] » (q11, o01). Citer cinq sources en refusant est trompeur. À corriger dans le prompt (« en cas de refus, ne cite aucune source »). Le contrôle automatique ne le pénalise pas.
+- **Le mot-clé de q15 est trop indulgent** : `large aeroplane|grands avions` accepte une réponse qui oublie « turbine powered ». Le verdict « BONNE REPONSE » de q15 est donc généreux ; la réponse est en réalité partielle.
+- **Le plafond compte les questions, pas les requêtes HTTP.** Le client Gemini renvoie lui-même une requête quand Google répond 503 (jusqu'à 3 essais). Lors de l'essai avec `3.8`, 6 questions ont généré une quinzaine de requêtes. Pour un plafond exact, il faudrait désactiver ces relances pendant l'évaluation (`max_retries=0`).
+- **Quotas** : un 429 est tombé sur le dernier appel d'un lancement de 17 appels. Hypothèse non vérifiée : limite par minute. À contrôler sur https://ai.dev/rate-limit ; on peut augmenter `--pause`.
+
+### Décision
+
+**`gemini-3.5-flash-lite` est retenu pour l'instant** : ses limites sont larges, ce qui convient aux tests et aux évaluations, et c'est le seul qui a permis des mesures complètes. Valeur par défaut dans `src/config.py` et `.env.example`. La question sera à rouvrir pour la production, avec un modèle plus capable si la qualité des réponses l'exige.
 
 ---
 
 ## Pistes pour améliorer le retrieval
 
+- Corriger le **prompt** : en cas de refus, ne citer aucune source.
 - Ajouter un **seuil de score** : en dessous, répondre « je ne sais pas » sans appeler le LLM (à calibrer sur plus de questions).
 - Tester un **reranker** et/ou une **recherche hybride** (vectorielle et mots-clés), en commençant par q11 et q15, avec `bge-m3` puis `e5-small` pour comparer.
 - Filtrer les passages « bruit » (en-têtes de page, numéros) : ils remontent dans les résultats et le filtre actuel (plus de 50 caractères) les laisse passer.
@@ -273,13 +326,15 @@ Il faut activer le `.venv` (sinon : `No module named 'llama_index'`) et lancer D
 
 ## Reste à faire
 
-- [ ] Pousser `main` : `git push --force-with-lease=main:188d06a origin main`.
-- [ ] Supprimer la branche `feature/extract-file` sur GitHub (elle contient encore les PDF) et les branches locales `feature/extract-file` et `backup/avant-nettoyage`.
+- [x] Branche `feature/extract-file` supprimée (GitHub et local) : les PDF ne sont plus sur le dépôt distant.
+- [ ] Pousser les derniers commits (`main` est en avance sur GitHub) : `git push origin main`.
 - [x] Commiter `src/eval_retrieval.py`, `data/retrieval_questions.csv` et `data/eval/`.
 - [x] Choisir le modèle d'embedding : `bge-m3` retenu (section 9). `.env` et base alignés.
 - [x] Valeurs par défaut alignées sur `bge-m3` (1024 dimensions) dans `src/config.py` et `.env.example`. Le modèle `e5-small` reste indiqué en commentaire comme alternative légère.
 - [x] Brancher un LLM (Gemini) et générer des réponses avec citations (section 10).
-- [ ] Évaluer les réponses du LLM sur les 15 questions (chiffre exact, citation correcte, refus hors corpus).
+- [x] Évaluer les réponses du LLM : 15 questions + 2 hors corpus (section 11).
+- [ ] Prompt : un refus ne doit citer aucune source.
+- [ ] Durcir le mot-clé de q15 (« turbine powered ») et relancer o02 dans le même lancement que les autres.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
@@ -287,7 +342,10 @@ Il faut activer le `.venv` (sinon : `No module named 'llama_index'`) et lancer D
 ## Historique des commits (local)
 
 ```
-(ce commit) docs: journal, LLM generation with Gemini
+(ce commit) eval: answer evaluation results (gemini-3.5-flash-lite)
+c8cf6ac config: default LLM to gemini-3.5-flash-lite
+c4f6dfd eval: add LLM answer evaluation script
+9123250 docs: journal, LLM generation with Gemini
 bb1cd00 feat: switch answer generation from Mistral to Gemini
 6ba7861 add: implmentation of mistral LLM + api key
 18fe1a1 config: default to bge-m3

@@ -1,0 +1,19 @@
+id,kind,lang,question,retrieval_hit,answer_ok,cited_ok,verdict,cited,answer
+q01,corpus,fr,Combien d'avions Airbus a-t-il livrés en 2023 ?,True,True,True,OK,"1,2,4,5","En 2023, Airbus a livré **735 avions** commerciaux [1][4][5]. 
+
+La répartition par type d'appareil pour la branche commerciale est la suivante :
+- **68** avions de la famille A220 [1]
+- **571** avions de la famille A320 [1]
+- **32** avions A330 [1]
+- **64** avions A350 [1]
+
+Par ailleurs, l'entreprise a également livré **8** avions militaires A400M en 2023 [2]."
+q04,corpus,en,How much did Airbus spend on research and development in 2023?,True,True,True,OK,"1,3","In 2023, Airbus' total research and development (R&D) spend amounted to € 3.3 billion [1][3]."
+q05,corpus,en,What were Thales's sales in 2025?,True,True,True,OK,"2,3,5","In 2025, Thales's total sales amounted to **€22,136 million** (or **€22,136.4 million**) [2][3][5]."
+q06,corpus,fr,Combien de salariés Thales comptait-il au 31 décembre 2025 ?,True,True,True,OK,"1,3,4","Au 31 décembre 2025, Thales comptait 84 958 salariés [1][3][4]."
+q09,corpus,en,How many LEAP engines did Safran deliver in 2025?,True,True,True,OK,"1,2,5","In 2025, Safran delivered 1,802 LEAP engines [1][2][5]."
+q11,corpus,en,What was Safran's consolidated revenue in 2025?,False,False,False,REFUS (page non retrouvee),,Je ne trouve pas cette information dans les documents.
+q12,corpus,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,True,,,ERREUR API (ClientError),,"429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+q13,corpus,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,True,,,ERREUR API (ClientError),,"429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+o01,hors corpus,fr,Quel est le prix de l'action Boeing aujourd'hui ?,,,,NON EXECUTE (2 erreurs API de suite),,
+o02,hors corpus,fr,Qui a gagné la dernière finale de la Ligue des champions ?,,,,NON EXECUTE (2 erreurs API de suite),,

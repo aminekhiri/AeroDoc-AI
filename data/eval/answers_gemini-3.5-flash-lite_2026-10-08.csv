@@ -1,0 +1,13 @@
+id,kind,lang,question,retrieval_hit,answer_ok,cited_ok,verdict,cited,answer
+q01,corpus,fr,Combien d'avions Airbus a-t-il livrés en 2023 ?,True,True,True,OK,"1,4,5","En 2023, Airbus a livré 735 avions [1][4][5]."
+q04,corpus,en,How much did Airbus spend on research and development in 2023?,True,True,True,OK,"1,3","En 2023, les dépenses totales de recherche et développement (R&D) d'Airbus se sont élevées à 3,3 milliards d'euros (contre 3,1 milliards d'euros en 2022) [1][3]."
+q05,corpus,en,What were Thales's sales in 2025?,True,True,True,OK,"2,5","En 2025, les ventes de Thales se sont élevées à 22 136 millions d'euros [2][5]."
+q06,corpus,fr,Combien de salariés Thales comptait-il au 31 décembre 2025 ?,True,True,True,OK,"3,4","Au 31 décembre 2025, Thales comptait 84 958 salariés [3][4]."
+q09,corpus,en,How many LEAP engines did Safran deliver in 2025?,True,True,True,OK,"1,2,5","En 2025, Safran a livré un total de 1 802 moteurs LEAP [1][2][5]."
+q11,corpus,en,What was Safran's consolidated revenue in 2025?,False,False,False,REFUS (page non retrouvee),"1,2,3,4,5",Je ne trouve pas cette information dans les documents [1][2][3][4][5].
+q12,corpus,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,True,True,True,OK,1,"Pour les aéronefs ayant une capacité de plus de 44 passagers, il doit être démontré sous des conditions d'urgence simulées qu'il est possible d'évacuer l'avion du sol en **90 secondes** maximum (en incluant la capacité maximale en passagers et le nombre de membres d'équipage requis) [1]."
+q13,corpus,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,True,True,True,OK,1,"Selon la CS-25, une cabine pressurisée et les compartiments destinés à être occupés doivent être équipés pour fournir une altitude-pression de cabine d'au plus 2 438 m (8 000 ft) à l'altitude maximale d'utilisation de l'avion dans des conditions normales d'utilisation [1]. 
+
+De plus, si une certification est demandée pour des opérations au-dessus de 7 620 m (25 000 ft), l'avion doit être capable de maintenir une altitude-pression de cabine d'au plus 4 572 m (15 000 ft) en cas de panne ou de dysfonctionnement raisonnablement probable dans le système de pressurisation [1]."
+o01,hors corpus,fr,Quel est le prix de l'action Boeing aujourd'hui ?,,,,OK,,Je ne trouve pas cette information dans les documents.
+o02,hors corpus,fr,Qui a gagné la dernière finale de la Ligue des champions ?,,,,OK,,Je ne trouve pas cette information dans les documents.

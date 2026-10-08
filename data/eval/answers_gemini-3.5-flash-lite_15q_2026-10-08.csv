@@ -1,0 +1,24 @@
+id,kind,lang,question,retrieval_hit,answer_ok,cited_ok,verdict,cited,answer
+q01,corpus,fr,Combien d'avions Airbus a-t-il livrés en 2023 ?,True,True,True,OK,"1,4,5","En 2023, Airbus a livré 735 avions (commercial aircraft) [1][4][5]."
+q02,corpus,en,What was Airbus's commercial aircraft backlog at the end of 2023?,True,True,True,OK,"1,4","At the end of 2023, Airbus's backlog of commercial orders was 8,598 aircraft [1][4]."
+q03,corpus,fr,Quel était l'effectif actif d'Airbus au 31 décembre 2023 ?,True,True,True,OK,"2,3","Au 31 décembre 2023, l'effectif actif d'Airbus était de 147 893 employés [2][3]."
+q04,corpus,en,How much did Airbus spend on research and development in 2023?,True,True,True,OK,"1,3","En 2023, les dépenses totales de recherche et développement (R&D) d'Airbus se sont élevées à 3,3 milliards d'euros (contre 3,1 milliards d'euros en 2022) [1][3]."
+q05,corpus,en,What were Thales's sales in 2025?,True,True,True,OK,2,"En 2025, les ventes de Thales se sont élevées à 22 136 millions d'euros [2]."
+q06,corpus,fr,Combien de salariés Thales comptait-il au 31 décembre 2025 ?,True,True,True,OK,"3,4","Au 31 décembre 2025, Thales comptait 84 958 salariés [3][4]."
+q07,corpus,en,What dividend per share is Thales proposing for the 2025 financial year?,True,True,True,OK,"1,3,5","For the 2025 financial year, Thales is proposing a dividend of €3.90 per share [1][3][5]."
+q08,corpus,fr,Combien Thales investit-il chaque année en R&D sur ses fonds propres ?,True,True,True,OK,1,"En 2025, les dépenses de R&D sur fonds propres de Thales ont dépassé 1,3 milliard d'euros (plus précisément 1 328 millions d'euros), ce qui représente 6,0 % des ventes [1]. 
+
+Pour les années précédentes, les dépenses de R&D sur fonds propres figurant au compte de résultat étaient de :
+- 1 108 millions d'euros en 2023 (6,0 % des ventes) [1].
+- 1 274 millions d'euros en 2024 (6,2 % des ventes) [1]."
+q09,corpus,en,How many LEAP engines did Safran deliver in 2025?,True,True,True,OK,"1,2,5","In 2025, Safran delivered a total of 1,802 LEAP engines [1][2][5]."
+q10,corpus,fr,Quelle part du chiffre d'affaires 2025 de la division Propulsion de Safran provient des services ?,True,True,True,OK,"1,2","D'après les documents, la part du chiffre d'affaires 2025 de la division Propulsion de Safran provenant des services est de **65%** [1][2]."
+q11,corpus,en,What was Safran's consolidated revenue in 2025?,False,False,False,REFUS (page non retrouvee),"1,2,3,4,5",Je ne trouve pas cette information dans les documents [1][2][3][4][5].
+q12,corpus,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,True,True,True,OK,1,"Pour les aéronefs ayant une capacité de plus de 44 passagers, il doit être démontré sous des conditions d'urgence simulées qu'il est possible d'évacuer l'aéronef vers le sol en un maximum de **90 secondes** [1]."
+q13,corpus,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,True,True,True,OK,1,"Selon CS 25.841, sous des conditions normales d'exploitation, les cabines et compartiments pressurisés devant être occupés doivent être équipés pour fournir une altitude de pression en cabine de pas plus de 2 438 m (8 000 ft) à l'altitude maximale d'exploitation de l'avion [1]. 
+
+De plus, si une certification est demandée pour des opérations au-dessus de 7 620 m (25 000 ft), l'avion doit être capable de maintenir une altitude de pression en cabine de pas plus de 4 572 m (15 000 ft) en cas de panne ou de dysfonctionnement raisonnablement probable du système de pressurisation [1]."
+q14,corpus,en,What are the minimum dimensions of a Type I emergency exit?,True,True,True,OK,2,"Un type I est une sortie au niveau du sol dont l'ouverture rectangulaire mesure au moins 61 cm (24 pouces) de large sur 1,22 m (48 pouces) de haut, avec des rayons de courbure d'angle ne dépassant pas 20,3 cm (8 pouces) [2]."
+q15,corpus,fr,À quels avions s'appliquent les spécifications de certification CS-25 ?,False,True,False,"BONNE REPONSE, CITATION FAUSSE","2,4","Les spécifications de certification CS-25 s'appliquent aux grands aéronefs (""large aeroplanes"") [2][4]."
+o01,hors corpus,fr,Quel est le prix de l'action Boeing aujourd'hui ?,,,,OK,"1,2,3,4,5",Je ne trouve pas cette information dans les documents [1][2][3][4][5].
+o02,hors corpus,fr,Qui a gagné la dernière finale de la Ligue des champions ?,,,,ERREUR API (ClientError),,"429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
