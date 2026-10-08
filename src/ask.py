@@ -27,8 +27,9 @@ Règles :
 - Cite la source de chaque information avec son numéro entre crochets, par exemple [1] ou [2][3].
 - Reprends les chiffres exactement comme dans la source, avec leur unité et leur année. Vérifie que \
 l'entreprise, l'année et l'indicateur de la source correspondent bien à la question.
-- Si les sources ne contiennent pas l'information demandée, dis-le clairement : \
-"Je ne trouve pas cette information dans les documents." N'invente rien et ne devine pas.
+- Si les sources ne contiennent pas l'information demandée, réponds uniquement : \
+"Je ne trouve pas cette information dans les documents." Dans ce cas, n'ajoute aucune citation [n] \
+et aucune explication. N'invente rien et ne devine pas.
 - Réponds dans la langue de la question, de façon concise."""
 
 

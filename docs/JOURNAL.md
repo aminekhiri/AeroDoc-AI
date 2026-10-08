@@ -307,6 +307,14 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 - **Le plafond compte les questions, pas les requêtes HTTP.** Le client Gemini renvoie lui-même une requête quand Google répond 503 (jusqu'à 3 essais). Lors de l'essai avec `3.8`, 6 questions ont généré une quinzaine de requêtes. Pour un plafond exact, il faudrait désactiver ces relances pendant l'évaluation (`max_retries=0`).
 - **Quotas** : un 429 est tombé sur le dernier appel d'un lancement de 17 appels. Hypothèse non vérifiée : limite par minute. À contrôler sur https://ai.dev/rate-limit ; on peut augmenter `--pause`.
 
+### Corrections faites ensuite (sans appel LLM)
+
+- **Prompt** : « si les sources ne contiennent pas l'information, réponds uniquement *Je ne trouve pas cette information dans les documents.*, sans aucune citation `[n]` ni explication ».
+- **q15** : le mot-clé exige maintenant « turbine » ou « turbomachine » (l'ancienne réponse partielle « grands aéronefs » ne passe plus).
+- **`eval_answers.py`** : une question hors corpus n'est réussie que si le modèle refuse **et** ne cite aucune source ; un refus avec citations donne `REFUS MAIS CITE DES SOURCES`. La synthèse affiche la part de refus qui citent des sources.
+- Pas encore corrigé : le plafond d'appels compte les questions et non les requêtes HTTP.
+- **Ces corrections n'ont pas été testées sur le vrai modèle** : seuls la syntaxe, le prompt affiché (`--show-prompt`), des tests hors réseau et un essai à blanc ont été faits. Les chiffres de la section ci-dessus ont été obtenus **avant** ces changements.
+
 ### Décision
 
 **`gemini-3.5-flash-lite` est retenu pour l'instant** : ses limites sont larges, ce qui convient aux tests et aux évaluations, et c'est le seul qui a permis des mesures complètes. Valeur par défaut dans `src/config.py` et `.env.example`. La question sera à rouvrir pour la production, avec un modèle plus capable si la qualité des réponses l'exige.
@@ -315,7 +323,6 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 
 ## Pistes pour améliorer le retrieval
 
-- Corriger le **prompt** : en cas de refus, ne citer aucune source.
 - Ajouter un **seuil de score** : en dessous, répondre « je ne sais pas » sans appeler le LLM (à calibrer sur plus de questions).
 - Tester un **reranker** et/ou une **recherche hybride** (vectorielle et mots-clés), en commençant par q11 et q15, avec `bge-m3` puis `e5-small` pour comparer.
 - Filtrer les passages « bruit » (en-têtes de page, numéros) : ils remontent dans les résultats et le filtre actuel (plus de 50 caractères) les laisse passer.
@@ -333,8 +340,9 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 - [x] Valeurs par défaut alignées sur `bge-m3` (1024 dimensions) dans `src/config.py` et `.env.example`. Le modèle `e5-small` reste indiqué en commentaire comme alternative légère.
 - [x] Brancher un LLM (Gemini) et générer des réponses avec citations (section 10).
 - [x] Évaluer les réponses du LLM : 15 questions + 2 hors corpus (section 11).
-- [ ] Prompt : un refus ne doit citer aucune source.
-- [ ] Durcir le mot-clé de q15 (« turbine powered ») et relancer o02 dans le même lancement que les autres.
+- [x] Prompt corrigé (`src/ask.py`) : un refus ne doit citer aucune source ni ajouter d'explication. **Effet non mesuré** : aucun appel LLM n'a été fait depuis.
+- [x] Mot-clé de q15 durci (`turbine|turbomachine`), et `eval_answers.py` compte désormais un refus qui cite des sources comme un échec (`REFUS MAIS CITE DES SOURCES`). Vérifié hors réseau, pas encore sur un vrai lancement.
+- [ ] Relancer l'évaluation complète (17 appels) pour mesurer l'effet de ces corrections, et faire passer o02 dans le même lancement que les autres. À faire quand le quota Gemini le permet (https://ai.dev/rate-limit).
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).

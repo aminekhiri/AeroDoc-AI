@@ -6,7 +6,8 @@ For each question, ONE LLM call (same retrieval and prompt as ask.py). Checks ar
 no second LLM is used as a judge:
   - in-corpus question: the answer contains one of the keys of data/retrieval_questions.csv
     (column answer_keys) AND cites ([n]) a source from an expected page;
-  - out-of-scope question: the answer says it cannot find the information ("je ne trouve pas").
+  - out-of-scope question: the answer says it cannot find the information ("je ne trouve pas")
+    AND cites no source (a refusal that cites sources is misleading).
 
 Usage:
     python src/eval_answers.py                  # q01,q04,q05,q06,q09,q11,q12,q13 + 2 out-of-scope = 10 calls
@@ -77,6 +78,12 @@ def load_out_of_scope(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def verdict_out_of_scope(refused: bool, cites_sources: bool) -> str:
+    if not refused:
+        return "N'A PAS REFUSE"
+    return "REFUS MAIS CITE DES SOURCES" if cites_sources else "OK"
+
+
 def verdict_in_corpus(retrieval_hit: bool, answer_ok: bool, cited_ok: bool, refused: bool) -> str:
     if answer_ok and cited_ok:
         return "OK"
@@ -122,7 +129,8 @@ def main() -> None:
     for n, (kind, row) in enumerate(jobs):
         nodes = retriever.retrieve(row["question"])
         res = {"id": row["id"], "kind": kind, "lang": row.get("lang", ""), "question": row["question"],
-               "retrieval_hit": "", "answer_ok": "", "cited_ok": "", "verdict": "", "cited": "", "answer": ""}
+               "retrieval_hit": "", "answer_ok": "", "cited_ok": "", "refused": "", "verdict": "", "cited": "",
+               "answer": ""}
         if kind == "corpus":
             res["retrieval_hit"] = any(is_hit(x.node.metadata, row["expected_file"], row["pages"]) for x in nodes)
 
@@ -152,7 +160,10 @@ def main() -> None:
                         for c in cites if 1 <= c <= len(nodes))
                     res["verdict"] = verdict_in_corpus(res["retrieval_hit"], res["answer_ok"], res["cited_ok"], refused)
                 else:
-                    res["verdict"] = "OK" if refused else "N'A PAS REFUSE"
+                    res["verdict"] = verdict_out_of_scope(refused, bool(cites))
+                res["refused"] = refused
+                if refused and cites and kind == "corpus":
+                    res["verdict"] += " + CITATIONS"
         results.append(res)
 
         shown = " ".join(res["answer"].split())[:95]
@@ -171,7 +182,10 @@ def main() -> None:
               f"bonne citation {sum(bool(r['cited_ok']) for r in corpus)}/{len(corpus)}, "
               f"les deux (OK) {sum(r['verdict'] == 'OK' for r in corpus)}/{len(corpus)}")
     if oos:
-        print(f"Hors corpus : refus correct {sum(r['verdict'] == 'OK' for r in oos)}/{len(oos)}")
+        print(f"Hors corpus : refus correct (sans citation) {sum(r['verdict'] == 'OK' for r in oos)}/{len(oos)}")
+    refusals = [r for r in done if r["refused"] is True]
+    if refusals:
+        print(f"Refus qui citent des sources : {sum(bool(r['cited']) for r in refusals)}/{len(refusals)}")
     errors = [r for r in results if r["verdict"].startswith(("ERREUR", "NON EXEC"))]
     if errors:
         print(f"Non evaluees (erreur API ou arret) : {', '.join(r['id'] for r in errors)}")
