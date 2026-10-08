@@ -19,7 +19,7 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
 
 # Answer generation (Google Gemini API). The key is read from .env and never printed.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.8-flash")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))  # 0 = most faithful to the sources
 # Generous on purpose: Gemini "thinking" tokens count against this limit and could cut the answer short.
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
