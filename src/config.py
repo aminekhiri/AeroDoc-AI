@@ -1,4 +1,4 @@
-"""AeroDoc-AI - shared configuration (embedding model, pgvector store, Mistral LLM)."""
+"""AeroDoc-AI - shared configuration (embedding model, pgvector store, Gemini LLM)."""
 import os
 from pathlib import Path
 
@@ -17,11 +17,12 @@ EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
 
-# Answer generation (Mistral API). The key is read from .env and never printed.
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
+# Answer generation (Google Gemini API). The key is read from .env and never printed.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.8-flash")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))  # 0 = most faithful to the sources
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "700"))
+# Generous on purpose: Gemini "thinking" tokens count against this limit and could cut the answer short.
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 
 def _required(name: str) -> str:
     """Read a mandatory variable from the environment (.env), with no default."""
@@ -73,15 +74,16 @@ def setup_settings() -> None:
 
 
 def get_llm():
-    """Mistral chat model used to write the final answer (needs MISTRAL_API_KEY in .env)."""
-    if not MISTRAL_API_KEY:
-        raise RuntimeError("MISTRAL_API_KEY is not set. Add it to .env (see .env.example).")
-    from llama_index.llms.mistralai import MistralAI
+    """Gemini chat model used to write the final answer (needs GEMINI_API_KEY in .env)."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env (see .env.example).")
+    from llama_index.llms.google_genai import GoogleGenAI
 
-    return MistralAI(
+    return GoogleGenAI(
         model=LLM_MODEL,
-        api_key=MISTRAL_API_KEY,
-        temperature=LLM_TEMPERATURE,
+        api_key=GEMINI_API_KEY,
+        # gemini-3 models may reject an explicit temperature: leave it to the API default there.
+        temperature=None if "gemini-3" in LLM_MODEL else LLM_TEMPERATURE,
         max_tokens=LLM_MAX_TOKENS,
     )
 

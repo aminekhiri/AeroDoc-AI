@@ -1,17 +1,16 @@
 """
-AeroDoc-AI - Ask a question: retrieval (pgvector) + answer written by Mistral, with citations.
+AeroDoc-AI - Ask a question: retrieval (pgvector) + answer written by Gemini, with citations.
 
 Usage:
     python src/ask.py "What are the requirements for emergency exits?"
     python src/ask.py "Combien d'avions Airbus a-t-il livrés en 2023 ?" --k 5
     python src/ask.py "..." --show-prompt     # print the prompt, do not call the LLM (no API key needed)
 
-Needs MISTRAL_API_KEY in .env (see .env.example).
+Needs GEMINI_API_KEY in .env (see .env.example).
 """
 import argparse
 import re
 import sys
-import time
 
 print("[ask] chargement des bibliothèques (10 à 30 s la première fois)...", flush=True)
 
@@ -44,24 +43,19 @@ def build_prompt(question: str, nodes) -> str:
     return f"Sources :\n\n{sources}\n\nQuestion : {question}"
 
 
-RETRY_WAITS = (5, 20)  # seconds to wait before the 2nd and 3rd attempt on a rate limit (429)
-
-
-def is_rate_limit(exc: Exception) -> bool:
-    return getattr(exc, "status_code", None) == 429 or "429" in str(exc)
-
-
-def chat_with_retry(llm, messages):
-    """Call the LLM; on a 429 (rate limit) wait and retry twice, any other error is raised."""
-    for attempt, wait in enumerate((*RETRY_WAITS, None), 1):
-        try:
-            return llm.chat(messages)
-        except Exception as exc:
-            if wait is None or not is_rate_limit(exc):
-                raise
-            print(f"[ask] limite de débit Mistral (429), nouvel essai dans {wait} s "
-                  f"(essai {attempt}/{len(RETRY_WAITS) + 1})...", flush=True)
-            time.sleep(wait)
+def error_hint(exc: Exception) -> str:
+    """Short advice for the most common Gemini API errors."""
+    text = str(exc).lower()
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code == 429 or "429" in text or "resource_exhausted" in text or "quota" in text:
+        return ("\n[hint] Limite de débit ou de quota atteinte sur votre compte Gemini : "
+                "attendez une minute, vérifiez vos quotas sur aistudio.google.com, "
+                "ou essayez un autre modèle (LLM_MODEL dans .env).")
+    if code == 404 or "not found" in text:
+        return "\n[hint] Modèle introuvable : vérifiez LLM_MODEL dans .env."
+    if "api key" in text or code in (401, 403):
+        return "\n[hint] Clé refusée : vérifiez GEMINI_API_KEY dans .env."
+    return ""
 
 
 def main() -> None:
@@ -80,22 +74,17 @@ def main() -> None:
         print(f"\n--- system ---\n{SYSTEM_PROMPT}\n\n--- user ---\n{prompt}")
         return
 
-    print(f"[ask] {len(nodes)} passages trouvés, appel à Mistral ({LLM_MODEL})...", flush=True)
+    print(f"[ask] {len(nodes)} passages trouvés, appel à Gemini ({LLM_MODEL})...", flush=True)
     try:
         llm = get_llm()
-        response = chat_with_retry(llm, [
+        response = llm.chat([
             ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
             ChatMessage(role=MessageRole.USER, content=prompt),
         ])
     except RuntimeError as exc:  # missing key
         sys.exit(f"[error] {exc}")
-    except Exception as exc:  # network, quota, invalid key...
-        hint = ""
-        if is_rate_limit(exc):
-            hint = ("\n[hint] Limite de débit ou de quota atteinte sur votre compte Mistral : "
-                    "vérifiez Limits/Usage sur console.mistral.ai, attendez une minute, "
-                    "ou essayez un autre modèle (LLM_MODEL dans .env).")
-        sys.exit(f"[error] Mistral call failed ({LLM_MODEL}): {type(exc).__name__}: {exc}{hint}")
+    except Exception as exc:  # network, quota, invalid key... (the client already retries 3 times)
+        sys.exit(f"[error] Gemini call failed ({LLM_MODEL}): {type(exc).__name__}: {exc}{error_hint(exc)}")
 
     answer = (response.message.content or "").strip()
     cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}

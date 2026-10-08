@@ -4,4 +4,4 @@ llama-index-vector-stores-postgres
 llama-index-readers-file
 sentence-transformers
 python-dotenv
-llama-index-llms-mistralai
+llama-index-llms-google-genai
