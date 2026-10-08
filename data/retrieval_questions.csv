@@ -1,16 +1,16 @@
-id,lang,question,expected_file,expected_page_labels,expected_pdf_pages,expected_answer
-q01,fr,Combien d'avions Airbus a-t-il livrés en 2023 ?,airbus_urd_2023_en.pdf,35|44|91|178|179|250,35|44|91|178|179|250,735 avions (661 en 2022)
-q02,en,What was Airbus's commercial aircraft backlog at the end of 2023?,airbus_urd_2023_en.pdf,35|40|175,35|40|175,"8,598 aircraft"
-q03,fr,Quel était l'effectif actif d'Airbus au 31 décembre 2023 ?,airbus_urd_2023_en.pdf,119|120|138|171,119|120|138|171,"147,893 salariés (134,267 en 2022)"
-q04,en,How much did Airbus spend on research and development in 2023?,airbus_urd_2023_en.pdf,17|178|91|180,17|178|91|180,"EUR 3.3 billion (3,257 million)"
-q05,en,What were Thales's sales in 2025?,Thales-Universal-Registration-Document-2025-EN.pdf,41|48|42|43|49|51|256|262|264,43|50|44|45|51|53|258|264|266,"EUR 22,136 million, +7.6% vs 2024"
-q06,fr,Combien de salariés Thales comptait-il au 31 décembre 2025 ?,Thales-Universal-Registration-Document-2025-EN.pdf,149|152|192|283,151|154|194|285,"84,958 salariés"
-q07,en,What dividend per share is Thales proposing for the 2025 financial year?,Thales-Universal-Registration-Document-2025-EN.pdf,41|52|250|282|301|327,43|54|252|284|303|329,EUR 3.90 per share (3.70 in 2024)
-q08,fr,Combien Thales investit-il chaque année en R&D sur ses fonds propres ?,Thales-Universal-Registration-Document-2025-EN.pdf,199|39|54,201|41|56,"Plus de 1 milliard d'euros par an, en plus des 3 milliards financés par les clients"
-q09,en,How many LEAP engines did Safran deliver in 2025?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,4|36|69,6|38|71,"1,802 units, up 28% on 2024"
-q10,fr,Quelle part du chiffre d'affaires 2025 de la division Propulsion de Safran provient des services ?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,9|29,11|31,"65 % services, 35 % première monte"
-q11,en,What was Safran's consolidated revenue in 2025?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,73|66|199|213|216,75|68|201|215|218,"EUR 31,189 million, +12.5% vs 2024"
-q12,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,easa_cs25_amendment25_en.pdf,480,480,90 seconds (CS 25.803)
-q13,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,easa_cs25_amendment25_en.pdf,514,514,2438 m (8000 ft) à l'altitude maximale d'exploitation (CS 25.841)
-q14,en,What are the minimum dimensions of a Type I emergency exit?,easa_cs25_amendment25_en.pdf,481,481,61 cm (24 in) wide by 1.22 m (48 in) high (CS 25.807)
-q15,fr,À quels avions s'appliquent les spécifications de certification CS-25 ?,easa_cs25_amendment25_en.pdf,51,51,Aux grands avions à turbomachines (CS 25.1)
+id,lang,question,expected_file,expected_page_labels,expected_pdf_pages,expected_answer,answer_keys
+q01,fr,Combien d'avions Airbus a-t-il livrés en 2023 ?,airbus_urd_2023_en.pdf,35|44|91|178|179|250,35|44|91|178|179|250,735 avions (661 en 2022),735
+q02,en,What was Airbus's commercial aircraft backlog at the end of 2023?,airbus_urd_2023_en.pdf,35|40|175,35|40|175,"8,598 aircraft",8_598
+q03,fr,Quel était l'effectif actif d'Airbus au 31 décembre 2023 ?,airbus_urd_2023_en.pdf,119|120|138|171,119|120|138|171,"147,893 salariés (134,267 en 2022)",147_893
+q04,en,How much did Airbus spend on research and development in 2023?,airbus_urd_2023_en.pdf,17|178|91|180,17|178|91|180,"EUR 3.3 billion (3,257 million)",3_3|3_257
+q05,en,What were Thales's sales in 2025?,Thales-Universal-Registration-Document-2025-EN.pdf,41|48|42|43|49|51|256|262|264,43|50|44|45|51|53|258|264|266,"EUR 22,136 million, +7.6% vs 2024",22_136|22_1
+q06,fr,Combien de salariés Thales comptait-il au 31 décembre 2025 ?,Thales-Universal-Registration-Document-2025-EN.pdf,149|152|192|283,151|154|194|285,"84,958 salariés",84_958
+q07,en,What dividend per share is Thales proposing for the 2025 financial year?,Thales-Universal-Registration-Document-2025-EN.pdf,41|52|250|282|301|327,43|54|252|284|303|329,EUR 3.90 per share (3.70 in 2024),3_90
+q08,fr,Combien Thales investit-il chaque année en R&D sur ses fonds propres ?,Thales-Universal-Registration-Document-2025-EN.pdf,199|39|54,201|41|56,"Plus de 1 milliard d'euros par an, en plus des 3 milliards financés par les clients",1_3|1~328|un milliard|1 milliard|one billion|1 billion
+q09,en,How many LEAP engines did Safran deliver in 2025?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,4|36|69,6|38|71,"1,802 units, up 28% on 2024",1_802
+q10,fr,Quelle part du chiffre d'affaires 2025 de la division Propulsion de Safran provient des services ?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,9|29,11|31,"65 % services, 35 % première monte",65
+q11,en,What was Safran's consolidated revenue in 2025?,SAFRAN_DEU_2025_US_PDF MEL_0204.pdf,73|66|199|213|216,75|68|201|215|218,"EUR 31,189 million, +12.5% vs 2024",31_189|31_2
+q12,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,easa_cs25_amendment25_en.pdf,480,480,90 seconds (CS 25.803),90
+q13,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,easa_cs25_amendment25_en.pdf,514,514,2438 m (8000 ft) à l'altitude maximale d'exploitation (CS 25.841),2~438|8~000
+q14,en,What are the minimum dimensions of a Type I emergency exit?,easa_cs25_amendment25_en.pdf,481,481,61 cm (24 in) wide by 1.22 m (48 in) high (CS 25.807),1_22|122|48
+q15,fr,À quels avions s'appliquent les spécifications de certification CS-25 ?,easa_cs25_amendment25_en.pdf,51,51,Aux grands avions à turbomachines (CS 25.1),turbine|turbomachine|large aeroplane|grands avions
