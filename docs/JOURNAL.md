@@ -15,7 +15,7 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
 - **Score de référence de la chaîne RAG simple** (recherche + une réponse, sans vérification) : **13/15** avec `gemini-3.5-flash-lite` (q11 : refus honnête, q15 : réponse partielle). C'est le chiffre à battre par l'agent LangGraph.
 - **Agent LangGraph** (sections 12 et 13) : routeur (documents / conversation / hors périmètre) puis, pour les documents, reformulation → retrieve → write → verify (2 essais max). Mémoire de conversation par checkpointer LangGraph (10 derniers échanges).
 - **Chat** : `python src/chat.py` charge les modèles une seule fois ; une question coûte ensuite les seuls appels LLM.
-- **À faire en priorité** : mesurer l'agent sur les 15 questions et le comparer aux 13/15 de la chaîne simple ; fiabiliser les appels (coupures réseau, pause fixe) ; puis étape 3 (SQL). q11 et q15 restent des problèmes de recherche (reranker ou recherche hybride).
+- **À faire en priorité** : mesurer l'agent sur les 15 questions et le comparer aux 13/15 de la chaîne simple ; fiabiliser les appels (coupures réseau) ; puis étape 3 (SQL). q11 et q15 restent des problèmes de recherche (reranker ou recherche hybride).
 
 ---
 
@@ -317,7 +317,7 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 
 - **Prompt** : « si les sources ne contiennent pas l'information, réponds uniquement *Je ne trouve pas cette information dans les documents.*, sans aucune citation `[n]` ni explication ».
 - **q15** : le mot-clé exige maintenant « turbine » (l'ancienne réponse partielle « grands aéronefs » ne passe plus).
-- **Pause entre deux appels** : `LLM_PAUSE_S=5` dans `.env` et `.env.example` (limite de flash-lite : 15 requêtes/min, 500/jour). Elle est appliquée par `src/llm_client.py`, le client commun à **tous** les scripts qui appellent le LLM (`ask.py`, `eval_answers.py`, puis l'agent). L'ancienne option `--pause` d'`eval_answers.py` est supprimée. La limite de 500/jour n'est pas contrôlée par le code.
+- **Pause entre deux appels** : `LLM_PAUSE_S=5` dans `.env` et `.env.example` (limite de flash-lite : 15 requêtes/min, 500/jour). Elle est appliquée par `src/llm_client.py`, le client commun à **tous** les scripts qui appellent le LLM (`ask.py`, `eval_answers.py`, puis l'agent). L'ancienne option `--pause` d'`eval_answers.py` est supprimée. La limite de 500/jour n'est pas contrôlée par le code. *(Remplacée ensuite par une limite glissante de 15 appels par minute, `LLM_CALLS_PER_MIN`, section 13.)*
 - **`eval_answers.py`** : une question hors corpus n'est réussie que si le modèle refuse **et** ne cite aucune source ; un refus avec citations donne `REFUS MAIS CITE DES SOURCES`. La synthèse affiche la part de refus qui citent des sources.
 - Pas encore corrigé : le plafond d'appels compte les questions et non les requêtes HTTP.
 - **Ces corrections n'ont pas été testées sur le vrai modèle** : seuls la syntaxe, le prompt affiché (`--show-prompt`), des tests hors réseau et un essai à blanc ont été faits. Les chiffres de la section ci-dessus ont été obtenus **avant** ces changements.
@@ -426,7 +426,7 @@ Schéma exact : `docs/graph.md`.
 - **finish** : ajoute la réponse à la conversation.
 - La sortie structurée passe par `LLMClient.ask_structured`, avec le même cache et la même pause que les autres appels.
 
-### Coût par question (avec 5 s de pause entre deux appels)
+### Coût par question (appels LLM)
 
 | Route | Appels LLM |
 |---|---|
@@ -437,7 +437,20 @@ Schéma exact : `docs/graph.md`.
 
 Le routeur ajoute un appel par question par rapport au chat précédent.
 
-### Tests (24 au total, sans réseau)
+### Limite glissante au lieu de la pause fixe
+
+La pause fixe de 5 s entre deux appels faisait attendre même une question isolée, alors qu'elle ne fait que 3 ou 4 appels, loin de la limite de flash-lite (15 par minute). Elle est remplacée par une **limite glissante** : au plus `LLM_CALLS_PER_MIN=15` appels réels sur n'importe quelle fenêtre de 60 s (+ 1 s de marge), partagée par tout le processus (`RateLimiter` dans `src/llm_client.py`). Un appel n'attend que si la dernière minute est déjà pleine, et le chat l'annonce (`[llm] limite de 15 appels par minute atteinte : attente N s`). Une réponse servie par le cache ne consomme rien ; un appel en échec compte. `LLM_PAUSE_S` est supprimée ; `LLM_CALLS_PER_MIN=0` désactive la limite.
+
+Mesuré sur les mêmes deux questions, avec de vrais appels :
+
+| Question | Pause fixe de 5 s | Limite glissante |
+|---|---|---|
+| « Combien d'avions Airbus a-t-il livrés en 2023 ? » (3 appels) | 12,1 s | **2,5 s** |
+| « Et en 2022 ? » (4 appels, avec reformulation) | 22,8 s | **2,9 s** |
+
+La limite de 500 appels par jour n'est toujours pas contrôlée par le code.
+
+### Tests (31 au total, sans réseau)
 
 `tests/test_memory_router.py` (11 tests), avec un FakeLLM qui sait aussi produire une sortie structurée :
 
@@ -476,7 +489,7 @@ Aussi testés : avec une fenêtre de 3 échanges, la question d'il y a 4 tours n
 - [x] Chat qui charge les modèles une seule fois (`src/chat.py`).
 - [x] Mémoire de conversation (checkpointer, 10 échanges) et routeur documents / conversation / hors périmètre (section 13).
 - [ ] Réessayer une fois sur une coupure réseau de Google (`RemoteProtocolError`, vue 2 fois).
-- [ ] Remplacer la pause fixe de 5 s par une limite de 15 appels par minute glissante (une question attendrait moins).
+- [x] Pause fixe remplacée par une limite glissante de 15 appels par minute (`LLM_CALLS_PER_MIN`) : 2,5 à 2,9 s par question au lieu de 12 à 23 s.
 - [ ] Garder la mémoire après la fermeture du chat (checkpointer sur disque, par exemple SQLite) si besoin.
 - [ ] Évaluer l'agent sur les 15 questions + 2 hors corpus (2 à 4 appels par question) et comparer aux 13/15 de la chaîne simple.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).

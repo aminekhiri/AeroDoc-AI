@@ -168,7 +168,7 @@ def test_structured_output_is_validated_and_cached(tmp_path):
             assert "SYSTEM" in prompt.format_messages()[0].content
             return schema(route="conversation", raison="question sur l'échange")
 
-    client = LLMClient(StructuredLLM(), "fake", pause_s=0, cache=ResponseCache(tmp_path))
+    client = LLMClient(StructuredLLM(), "fake", cache=ResponseCache(tmp_path))
     first = client.ask_structured("SYSTEM", "liste mes questions", RouteDecision)
     second = client.ask_structured("SYSTEM", "liste mes questions", RouteDecision)
     assert isinstance(first, RouteDecision) and first.route == "conversation"

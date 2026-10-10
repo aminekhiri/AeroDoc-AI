@@ -27,7 +27,7 @@ from pathlib import Path
 
 from llama_index.core import VectorStoreIndex
 
-from config import LLM_MODEL, LLM_PAUSE_S, get_vector_store, setup_settings
+from config import LLM_CALLS_PER_MIN, LLM_MODEL, get_vector_store, setup_settings
 from llm_client import LLMClient, make_client
 from prompts import SYSTEM_PROMPT, build_prompt, to_passages
 from eval_retrieval import DEFAULT_CSV, is_hit, load_questions
@@ -113,7 +113,7 @@ def main() -> None:
     if total > args.max_calls:
         sys.exit(f"[error] {total} LLM calls planned, above --max-calls={args.max_calls}. Nothing was called.")
     mode = ("DRY-RUN, aucun appel LLM" if args.dry_run else
-            f"{total} appels LLM ({LLM_MODEL}), 1 par question, plafond {args.max_calls}, pause {LLM_PAUSE_S:g} s")
+            f"{total} appels LLM ({LLM_MODEL}), 1 par question, plafond {args.max_calls}, max {LLM_CALLS_PER_MIN}/min")
     print(f"[eval] {len(wanted)} questions du corpus + {len(out_of_scope)} hors corpus : {mode}\n", flush=True)
 
     setup_settings()

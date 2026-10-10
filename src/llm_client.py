@@ -1,9 +1,10 @@
 """AeroDoc-AI - LLM calls shared by every script that calls the LLM.
 
 LLMClient.ask(system, user) -> text, with:
-  - a pause of at least `pause_s` seconds between two real calls, to stay under the API rate limit
-    (gemini-3.5-flash-lite: 15 requests/min, 500/day). The pause is shared by all clients of the
-    process (writer and verifier use the same quota);
+  - a rate limit: at most LLM_CALLS_PER_MIN real calls in any sliding window of 60 s
+    (gemini-3.5-flash-lite: 15 requests/min, 500/day). The limiter is shared by all clients of the
+    process (router, writer and verifier use the same quota). A call only waits when the last
+    minute is already full: a single question never waits;
   - an optional disk cache of the answers (data/cache/llm/ by default): the same model, system
     prompt and user prompt give the cached answer, without any API call. Any change of model or
     prompt is a new key, so a modified prompt is never answered from an old cache entry.
@@ -11,10 +12,53 @@ LLMClient.ask(system, user) -> text, with:
 import hashlib
 import json
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-_last_call = 0.0  # time.monotonic() of the last real call in this process
+WINDOW_S = 60.0
+SAFETY_MARGIN_S = 1.0  # the API clock and ours are not exactly in sync
+
+
+class RateLimiter:
+    """At most `max_calls` calls in any sliding window of `window_s` seconds (0 = no limit)."""
+
+    def __init__(self, max_calls: int, window_s: float = WINDOW_S + SAFETY_MARGIN_S,
+                 clock=time.monotonic, sleep=time.sleep, announce=print):
+        self.max_calls, self.window_s = max_calls, window_s
+        self.clock, self.sleep, self.announce = clock, sleep, announce
+        self.starts: deque[float] = deque()  # start times of the calls still inside the window
+
+    def _forget_old(self, now: float) -> None:
+        while self.starts and self.starts[0] <= now - self.window_s:
+            self.starts.popleft()
+
+    def acquire(self) -> float:
+        """Wait if the window is full, then record a call. Returns the seconds waited."""
+        if self.max_calls <= 0:
+            return 0.0
+        now = self.clock()
+        self._forget_old(now)
+        waited = 0.0
+        if len(self.starts) >= self.max_calls:
+            waited = self.starts[0] + self.window_s - now
+            self.announce(f"[llm] limite de {self.max_calls} appels par minute atteinte : attente {waited:.0f} s",
+                          flush=True)
+            self.sleep(waited)
+            now = self.clock()
+            self._forget_old(now)
+        self.starts.append(now)  # a failed call also counts against the quota
+        return waited
+
+
+_shared_limiters: dict[int, RateLimiter] = {}
+
+
+def shared_limiter(max_calls: int) -> RateLimiter:
+    """One limiter per process (and per limit value): all clients share the same API quota."""
+    if max_calls not in _shared_limiters:
+        _shared_limiters[max_calls] = RateLimiter(max_calls)
+    return _shared_limiters[max_calls]
 
 
 class ResponseCache:
@@ -41,21 +85,19 @@ class ResponseCache:
 
 
 class LLMClient:
-    def __init__(self, llm, model: str, pause_s: float = 0.0, cache: ResponseCache | None = None):
+    def __init__(self, llm, model: str, cache: ResponseCache | None = None, limiter: RateLimiter | None = None):
         self.llm = llm          # any LlamaIndex chat LLM (or a test double with .chat)
         self.model = model
-        self.pause_s = pause_s
+        self.limiter = limiter  # None: no rate limit (tests)
         self.cache = cache
         self.real_calls = 0     # calls actually sent to the API
         self.cache_hits = 0     # answers served by the cache
 
     def _wait_turn(self) -> None:
-        wait = _last_call + self.pause_s - time.monotonic()
-        if _last_call and wait > 0:
-            time.sleep(wait)
+        if self.limiter:
+            self.limiter.acquire()
 
     def ask(self, system: str, user: str) -> str:
-        global _last_call
         key = ResponseCache.key(self.model, system, user) if self.cache else None
         if key:
             cached = self.cache.get(key)
@@ -72,7 +114,6 @@ class LLMClient:
                 ChatMessage(role=MessageRole.USER, content=user),
             ])
         finally:  # a failed call also counts against the quota
-            _last_call = time.monotonic()
             self.real_calls += 1
         answer = (response.message.content or "").strip()
         if key:
@@ -82,7 +123,6 @@ class LLMClient:
     def ask_structured(self, system: str, user: str, schema):
         """Structured output: the API is asked for JSON following the Pydantic `schema`
         (Gemini response_schema); returns a validated instance of `schema`."""
-        global _last_call
         tag = f"structured:{schema.__name__}:{json.dumps(schema.model_json_schema(), sort_keys=True)}\n{system}"
         key = ResponseCache.key(self.model, tag, user) if self.cache else None
         if key:
@@ -102,7 +142,6 @@ class LLMClient:
         try:
             result = predict(schema, prompt)
         finally:
-            _last_call = time.monotonic()
             self.real_calls += 1
         if key:
             self.cache.put(key, self.model, result.model_dump_json())
@@ -110,12 +149,12 @@ class LLMClient:
 
 
 def make_client(model: str | None = None, use_cache: bool = True) -> LLMClient:
-    """Client for the real Gemini API, configured from .env (model, pause, cache)."""
-    from config import LLM_CACHE, LLM_CACHE_DIR, LLM_MODEL, LLM_PAUSE_S, get_llm
+    """Client for the real Gemini API, configured from .env (model, rate limit, cache)."""
+    from config import LLM_CACHE, LLM_CACHE_DIR, LLM_CALLS_PER_MIN, LLM_MODEL, get_llm
 
     model = model or LLM_MODEL
     cache = ResponseCache(LLM_CACHE_DIR) if (use_cache and LLM_CACHE) else None
-    return LLMClient(get_llm(model), model, pause_s=LLM_PAUSE_S, cache=cache)
+    return LLMClient(get_llm(model), model, cache=cache, limiter=shared_limiter(LLM_CALLS_PER_MIN))
 
 
 def error_hint(exc: Exception) -> str:

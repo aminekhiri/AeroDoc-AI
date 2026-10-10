@@ -103,13 +103,13 @@ def test_cache_avoids_a_second_api_call(tmp_path):
             ChatLLM.calls += 1
             return types.SimpleNamespace(message=types.SimpleNamespace(content=f"réponse {ChatLLM.calls}"))
 
-    client = LLMClient(ChatLLM(), "fake-model", pause_s=0, cache=ResponseCache(tmp_path))
+    client = LLMClient(ChatLLM(), "fake-model", cache=ResponseCache(tmp_path))
     assert client.ask("S", "U") == "réponse 1"
     assert client.ask("S", "U") == "réponse 1"      # same prompt: served by the cache
     assert client.ask("S", "U bis") == "réponse 2"  # different prompt: new call
     assert ChatLLM.calls == 2 and client.real_calls == 2 and client.cache_hits == 1
 
-    other_model = LLMClient(ChatLLM(), "other-model", pause_s=0, cache=ResponseCache(tmp_path))
+    other_model = LLMClient(ChatLLM(), "other-model", cache=ResponseCache(tmp_path))
     assert other_model.ask("S", "U") == "réponse 3"  # the model is part of the cache key
 
 

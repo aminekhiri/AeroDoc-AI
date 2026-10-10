@@ -23,8 +23,8 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))  # 0 = most faithful to the sources
 # Generous on purpose: Gemini "thinking" tokens count against this limit and could cut the answer short.
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
-# Minimum pause between two real LLM calls (flash-lite: 15 requests/min, 500/day).
-LLM_PAUSE_S = float(os.getenv("LLM_PAUSE_S", "5"))
+# Rate limit: at most this many real LLM calls in any sliding minute (flash-lite: 15/min, 500/day; 0 = none).
+LLM_CALLS_PER_MIN = int(os.getenv("LLM_CALLS_PER_MIN", "15"))
 # Agent: the writer and the verifier can use different models (both LLM_MODEL by default).
 WRITER_MODEL = os.getenv("WRITER_MODEL", LLM_MODEL)
 VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", LLM_MODEL)
