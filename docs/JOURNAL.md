@@ -13,8 +13,9 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
 - **LLM** : Google Gemini, modèle **`gemini-3.5-flash-lite`** retenu pour l'instant (limites larges, bien pour les tests ; Mistral abandonné). Voir sections 10 et 11.
 - **Évaluation des réponses** (15 questions + 2 hors corpus, section 11) : **13/15 OK** ; les 2 autres sont les misses de la recherche (q11 : refus honnête, q15 : réponse partielle). Refus hors corpus : 2/2 corrects (en deux lancements différents).
 - **Score de référence de la chaîne RAG simple** (recherche + une réponse, sans vérification) : **13/15** avec `gemini-3.5-flash-lite` (q11 : refus honnête, q15 : réponse partielle). C'est le chiffre à battre par l'agent LangGraph.
-- **Agent LangGraph** (section 12) : graphe retrieve → write → verify, avec une correction possible (2 essais max). 13 tests verts sans réseau. Essai réel sur 3 questions : 3 brouillons acceptés au 1er essai, aucune correction déclenchée.
-- **À faire en priorité** : mesurer l'agent sur les 15 questions et le comparer aux 13/15 de la chaîne simple, puis étape 3 (SQL). q11 et q15 restent des problèmes de recherche (reranker ou recherche hybride).
+- **Agent LangGraph** (sections 12 et 13) : routeur (documents / conversation / hors périmètre) puis, pour les documents, reformulation → retrieve → write → verify (2 essais max). Mémoire de conversation par checkpointer LangGraph (10 derniers échanges).
+- **Chat** : `python src/chat.py` charge les modèles une seule fois ; une question coûte ensuite les seuls appels LLM.
+- **À faire en priorité** : mesurer l'agent sur les 15 questions et le comparer aux 13/15 de la chaîne simple ; fiabiliser les appels (coupures réseau, pause fixe) ; puis étape 3 (SQL). q11 et q15 restent des problèmes de recherche (reranker ou recherche hybride).
 
 ---
 
@@ -78,9 +79,9 @@ Base de données : Postgres + pgvector, lancée avec `docker compose up -d` (con
 
 ```
 src/       config.py, prompts.py, llm_client.py, ingest.py, search.py, ask.py, ask_agent.py,
-           eval_retrieval.py, eval_answers.py
-src/agent/ state.py, nodes.py, graph.py (graphe LangGraph)
-tests/     test_graph.py (pytest, sans réseau)
+           chat.py, eval_retrieval.py, eval_answers.py
+src/agent/ state.py, nodes.py, graph.py, memory.py, runtime.py (graphe LangGraph)
+tests/     test_graph.py, test_memory_router.py, fakes.py (pytest, sans réseau)
 scripts/   download_corpus.py
 data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, out_of_scope_questions.csv, eval/
 docs/      roadmap, ce journal, graph.md (schéma du graphe)
@@ -383,6 +384,69 @@ Aussi testés : JSON illisible → `ok` et avertissement dans les logs ; refus s
 - **Coût** : chaque question coûte au moins 2 appels (rédaction + vérification), jusqu'à 4. Avec la limite de 500 requêtes/jour, cela fait entre 125 et 250 questions par jour.
 - **Pas encore mesuré** : l'agent sur les 15 questions, à comparer avec les 13/15 de la chaîne simple.
 
+## 13. Chat avec mémoire et routeur (10 octobre)
+
+### Le chat : modèles chargés une seule fois
+
+Un lancement d'`ask_agent.py` coûtait 20 à 50 s **avant tout appel à Gemini** (mesuré : ~8 s de bibliothèques, ~7 s pour charger bge-m3 sur le GPU, ~5 s d'initialisation ; jusqu'à 52 s quand le disque est froid). `src/chat.py` charge tout une fois puis enchaîne les questions : **7,5 s par question** mesurées (2 appels Gemini, dont 5 s de pause imposée), moins d'une seconde pour une réponse en cache. `src/agent/runtime.py` charge l'agent pour `chat.py` et `ask_agent.py` sans dupliquer le code.
+
+### Première mémoire, et ses limites
+
+La première version gardait les **3** derniers échanges dans une `deque` en mémoire vive, et **seulement** pour reformuler la question avant la recherche. Deux défauts :
+
+- toutes les questions passaient par la recherche dans les PDF : « liste mes 6 dernières questions » recevait « je ne trouve pas » ;
+- une référence à une question posée il y a plus de 3 tours était oubliée.
+
+### Nouvelle mémoire : checkpointer LangGraph
+
+- L'historique est **dans l'état du graphe** : `messages` (réducteur `add_messages`) contient les questions telles que tapées et les réponses finales.
+- Un **checkpointer `MemorySaver`** garde cet état d'un tour à l'autre, **un `thread_id` par conversation**. `/reset` ouvre une nouvelle conversation. La mémoire est en RAM : elle est perdue à la fermeture du chat.
+- Le routeur, le reformulateur et la réponse depuis l'historique voient les **10 derniers échanges** (`HISTORY_TURNS=10` dans `.env`), numérotés, ce qui permet de résoudre « ma première question ».
+- Les champs propres à un tour (passages, brouillon, verdict, nombre d'essais…) sont remis à zéro au début de chaque question (`turn_input()`). Sans cela, le nombre d'essais du tour précédent aurait bloqué la boucle de correction.
+
+### Routeur en tête du graphe
+
+```mermaid
+graph TD;
+  start([début]) --> route
+  route -. documents .-> condense --> retrieve --> write --> verify
+  verify -. "a_corriger et essais < 2" .-> write
+  verify -. sinon .-> finish
+  route -. conversation .-> answer_from_history --> finish
+  route -. hors_perimetre .-> refuse --> finish
+  finish --> fin([fin])
+```
+
+Schéma exact : `docs/graph.md`.
+
+- **route** : sortie structurée, schéma Pydantic `RouteDecision` (`documents` | `conversation` | `hors_perimetre`, plus une raison courte), demandée à Gemini avec un `response_schema`. En cas de doute : `documents`. Si l'appel échoue ou que la réponse est invalide : `documents`, avec un avertissement dans les logs.
+- **documents** : reformulation (aucun appel sans historique), puis retrieve, write et verify comme avant.
+- **conversation** : `answer_from_history` répond uniquement à partir de l'historique, sans recherche ni citation de PDF.
+- **hors_perimetre** : refus direct (« Je ne trouve pas cette information dans les documents. »), sans recherche ni appel LLM.
+- **finish** : ajoute la réponse à la conversation.
+- La sortie structurée passe par `LLMClient.ask_structured`, avec le même cache et la même pause que les autres appels.
+
+### Coût par question (avec 5 s de pause entre deux appels)
+
+| Route | Appels LLM |
+|---|---|
+| documents, 1re question | 3 (route, write, verify) |
+| documents, avec historique | 4 (+ reformulation), jusqu'à 6 avec une correction |
+| conversation | 2 (route, réponse) |
+| hors_perimetre | 1 (route) |
+
+Le routeur ajoute un appel par question par rapport au chat précédent.
+
+### Tests (24 au total, sans réseau)
+
+`tests/test_memory_router.py` (11 tests), avec un FakeLLM qui sait aussi produire une sortie structurée :
+
+1. « liste mes 3 dernières questions » après 3 questions → route `conversation`, aucune recherche, les 3 questions **telles que tapées** (« Et en 2022 ? », pas sa reformulation) dans l'ordre.
+2. « et en 2023 ? » après « combien d'avions Airbus a livrés en 2022 ? » → route `documents`, question reformulée avec Airbus et 2023, et c'est elle qui part en recherche.
+3. Référence à une question posée 4 tours avant → l'échange 1 est bien transmis au reformulateur, et la question résolue part en recherche.
+
+Aussi testés : avec une fenêtre de 3 échanges, la question d'il y a 4 tours n'est plus visible (l'ancien défaut) ; hors périmètre sans recherche ni rédacteur ; échec du routeur → `documents` et avertissement ; conversations isolées par `thread_id` ; remise à zéro des champs du tour ; association questions/réponses (un tour en échec est ignoré) ; sortie structurée validée et mise en cache ; route inconnue refusée par le schéma.
+
 ---
 
 ## Pistes pour améliorer le retrieval
@@ -409,6 +473,11 @@ Aussi testés : JSON illisible → `ok` et avertissement dans les logs ; refus s
 - [ ] Relancer l'évaluation complète (17 appels) pour mesurer l'effet de ces corrections, et faire passer o02 dans le même lancement que les autres. À faire quand le quota Gemini le permet (https://ai.dev/rate-limit).
 - [x] Pause de 5 s entre deux appels LLM (`LLM_PAUSE_S`), commune à tous les scripts.
 - [x] Premier graphe LangGraph : rédacteur + vérificateur (section 12), avec cache des réponses LLM et tests pytest.
+- [x] Chat qui charge les modèles une seule fois (`src/chat.py`).
+- [x] Mémoire de conversation (checkpointer, 10 échanges) et routeur documents / conversation / hors périmètre (section 13).
+- [ ] Réessayer une fois sur une coupure réseau de Google (`RemoteProtocolError`, vue 2 fois).
+- [ ] Remplacer la pause fixe de 5 s par une limite de 15 appels par minute glissante (une question attendrait moins).
+- [ ] Garder la mémoire après la fermeture du chat (checkpointer sur disque, par exemple SQLite) si besoin.
 - [ ] Évaluer l'agent sur les 15 questions + 2 hors corpus (2 à 4 appels par question) et comparer aux 13/15 de la chaîne simple.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
@@ -417,7 +486,8 @@ Aussi testés : JSON illisible → `ok` et avertissement dans les logs ; refus s
 ## Historique des commits (local)
 
 ```
-(ce commit) feat: first LangGraph agent (writer + verifier)
+(ce commit) feat: chat with conversation memory and router
+d2bb5c9 feat: first LangGraph agent (writer + verifier)
 6b4c5e9 eval: close the simple RAG baseline (stricter q15, shared LLM pause)
 0eb2a75 evaluation of the llm model (gemini-3.5-flash-lite) + update of the journal
 2df27ba eval: answer evaluation results (gemini-3.5-flash-lite)

@@ -1,17 +1,74 @@
 """Nodes of the agent graph. Dependencies are injected, so the tests can use fakes without network.
 
 - retriever: object with .retrieve(question) -> LlamaIndex results (the same retriever as ask.py);
-- writer, verifier: objects with .ask(system, user) -> str (an LLMClient, or a fake in the tests).
+- writer, verifier, router: objects with .ask(system, user) -> str and, for the router,
+  .ask_structured(system, user, schema) -> Pydantic instance (an LLMClient, or a fake in the tests).
 """
 import json
 import logging
 import re
+from typing import Literal
 
-from prompts import (SYSTEM_PROMPT, VERIFIER_SYSTEM_PROMPT, build_prompt, revision_prompt,
+from langchain_core.messages import AIMessage
+from pydantic import BaseModel, Field
+
+from agent.memory import standalone_question, turns_from_messages
+from prompts import (CONVERSATION_SYSTEM_PROMPT, REFUSAL_TEXT, ROUTER_SYSTEM_PROMPT, SYSTEM_PROMPT,
+                     VERIFIER_SYSTEM_PROMPT, build_prompt, history_prompt, revision_prompt,
                      to_passages, verification_prompt)
 
 log = logging.getLogger("aerodoc.agent")
 VERDICTS = ("ok", "a_corriger")
+
+
+class RouteDecision(BaseModel):
+    """Structured output of the router."""
+    route: Literal["documents", "conversation", "hors_perimetre"] = Field(
+        description="documents : contenu des PDF ; conversation : la conversation elle-même ; "
+                    "hors_perimetre : sans rapport. En cas de doute : documents.")
+    raison: str = Field(default="", description="raison très courte du choix")
+
+
+def _history(state, max_turns: int) -> list[tuple[str, str]]:
+    """Previous exchanges of the conversation (the last message is the current question)."""
+    return turns_from_messages(state.get("messages", [])[:-1], max_turns)
+
+
+def make_route(router, max_turns: int):
+    def route(state):
+        question = state["user_question"]
+        try:
+            decision = router.ask_structured(ROUTER_SYSTEM_PROMPT,
+                                             history_prompt(_history(state, max_turns), question), RouteDecision)
+            return {"route": decision.route, "route_reason": decision.raison}
+        except Exception as exc:  # invalid structured output, API error...: when in doubt, documents
+            log.warning("router failed (%s: %s), route forced to 'documents'", type(exc).__name__, exc)
+            return {"route": "documents", "route_reason": "(routeur en échec : documents par défaut)"}
+    return route
+
+
+def make_condense(router, max_turns: int):
+    def condense(state):
+        question = state["user_question"]
+        return {"question": standalone_question(router, _history(state, max_turns), question)}
+    return condense
+
+
+def make_answer_from_history(router, max_turns: int):
+    def answer_from_history(state):
+        prompt = history_prompt(_history(state, max_turns), state["user_question"])
+        return {"draft": router.ask(CONVERSATION_SYSTEM_PROMPT, prompt), "passages": [], "attempts": 1}
+    return answer_from_history
+
+
+def refuse(state):
+    """Out of scope: direct refusal, no search and no LLM call."""
+    return {"draft": REFUSAL_TEXT, "passages": [], "attempts": 0}
+
+
+def finish(state):
+    """Store the final answer in the conversation."""
+    return {"messages": [AIMessage(content=state["draft"])]}
 
 
 def make_retrieve(retriever):
@@ -59,5 +116,5 @@ def make_verify(verifier):
         else:
             verdict, feedback = parsed
         step = {"attempt": state["attempts"], "draft": state["draft"], "verdict": verdict, "feedback": feedback}
-        return {"verdict": verdict, "feedback": feedback, "history": [step]}
+        return {"verdict": verdict, "feedback": feedback, "steps": [step]}
     return verify

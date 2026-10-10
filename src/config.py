@@ -28,6 +28,8 @@ LLM_PAUSE_S = float(os.getenv("LLM_PAUSE_S", "5"))
 # Agent: the writer and the verifier can use different models (both LLM_MODEL by default).
 WRITER_MODEL = os.getenv("WRITER_MODEL", LLM_MODEL)
 VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", LLM_MODEL)
+# Agent: number of previous exchanges given to the router, the rewriter and the conversation answer.
+HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "10"))
 # Disk cache of the LLM answers (LLM_CACHE=0 disables it everywhere).
 LLM_CACHE = os.getenv("LLM_CACHE", "1") != "0"
 LLM_CACHE_DIR = Path(os.getenv("LLM_CACHE_DIR", "data/cache/llm"))

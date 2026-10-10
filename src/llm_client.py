@@ -79,6 +79,35 @@ class LLMClient:
             self.cache.put(key, self.model, answer)
         return answer
 
+    def ask_structured(self, system: str, user: str, schema):
+        """Structured output: the API is asked for JSON following the Pydantic `schema`
+        (Gemini response_schema); returns a validated instance of `schema`."""
+        global _last_call
+        tag = f"structured:{schema.__name__}:{json.dumps(schema.model_json_schema(), sort_keys=True)}\n{system}"
+        key = ResponseCache.key(self.model, tag, user) if self.cache else None
+        if key:
+            cached = self.cache.get(key)
+            if cached is not None:
+                self.cache_hits += 1
+                return schema.model_validate_json(cached)
+
+        from llama_index.core.llms import ChatMessage, MessageRole
+        from llama_index.core.prompts import ChatPromptTemplate
+
+        # One user message: the Gemini structured call has no separate system instruction.
+        prompt = ChatPromptTemplate(message_templates=[
+            ChatMessage(role=MessageRole.USER, content=f"{system}\n\n{user}")])
+        predict = getattr(self.llm, "structured_predict_without_function_calling", None) or self.llm.structured_predict
+        self._wait_turn()
+        try:
+            result = predict(schema, prompt)
+        finally:
+            _last_call = time.monotonic()
+            self.real_calls += 1
+        if key:
+            self.cache.put(key, self.model, result.model_dump_json())
+        return result
+
 
 def make_client(model: str | None = None, use_cache: bool = True) -> LLMClient:
     """Client for the real Gemini API, configured from .env (model, pause, cache)."""

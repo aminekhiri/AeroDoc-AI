@@ -5,10 +5,12 @@ import types
 
 import pytest
 
-from agent.graph import MAX_ATTEMPTS, build_graph, to_mermaid
+from agent.graph import MAX_ATTEMPTS, build_graph, to_mermaid, turn_input
 from agent.nodes import parse_verdict
 from llm_client import LLMClient, ResponseCache
 from prompts import SYSTEM_PROMPT, VERIFIER_SYSTEM_PROMPT
+
+from fakes import FakeLLM, FakeRetriever, router
 
 QUESTION = "Combien d'avions Airbus a-t-il livrés en 2023 ?"
 OK = json.dumps({"verdict": "ok", "probleme": ""})
@@ -17,35 +19,10 @@ INCOMPLETE = "En 2023, Airbus a livré 735 avions [1], répartis ainsi : 68 A220
 SUM_PROBLEM = "La liste est présentée comme complète mais 68 + 571 + 32 = 671 ≠ 735 : il manque les 64 A350."
 
 
-class FakeLLM:
-    """Returns scripted answers in order and records every (system, user) prompt it receives."""
-
-    def __init__(self, *answers):
-        self.answers = list(answers)
-        self.prompts = []
-
-    def ask(self, system, user):
-        self.prompts.append((system, user))
-        if not self.answers:
-            raise AssertionError("LLM called more often than expected")
-        return self.answers.pop(0)
-
-
-class FakeRetriever:
-    def __init__(self):
-        self.questions = []
-
-    def retrieve(self, question):
-        self.questions.append(question)
-        node = types.SimpleNamespace(
-            metadata={"file_name": "airbus_urd_2023_en.pdf", "page_label": "44"},
-            get_content=lambda: "A220 family: 68 A220 delivered; A320 family: 571; A330: 32; A350: 64.")
-        return [types.SimpleNamespace(node=node, score=0.73)]
-
-
 def run(writer, verifier):
+    """One question routed to "documents" (first question: no history, so no rewriting call)."""
     retriever = FakeRetriever()
-    final = build_graph(retriever, writer, verifier).invoke({"question": QUESTION})
+    final = build_graph(retriever, writer, verifier, router=router("documents")).invoke(turn_input(QUESTION))
     return final, retriever
 
 
@@ -74,8 +51,8 @@ def test_incomplete_list_is_rewritten_then_accepted():
     assert final["draft"] == COMPLETE and "64 A350" in final["draft"]
     second_prompt = writer.prompts[1][1]
     assert SUM_PROBLEM in second_prompt and INCOMPLETE in second_prompt  # the writer got the comment
-    assert [s["verdict"] for s in final["history"]] == ["a_corriger", "ok"]
-    assert final["history"][0]["draft"] == INCOMPLETE and final["history"][0]["feedback"] == SUM_PROBLEM
+    assert [s["verdict"] for s in final["steps"]] == ["a_corriger", "ok"]
+    assert final["steps"][0]["draft"] == INCOMPLETE and final["steps"][0]["feedback"] == SUM_PROBLEM
 
 
 def test_verifier_refusing_twice_stops_after_two_attempts():
@@ -88,7 +65,7 @@ def test_verifier_refusing_twice_stops_after_two_attempts():
     assert final["verdict"] == "a_corriger"
     assert final["draft"] == "brouillon 2 [1]"
     assert len(writer.prompts) == 2 and len(verifier.prompts) == 2
-    assert len(final["history"]) == 2
+    assert len(final["steps"]) == 2
 
 
 def test_invalid_verifier_json_counts_as_ok_and_is_logged(caplog):
@@ -138,5 +115,5 @@ def test_cache_avoids_a_second_api_call(tmp_path):
 
 def test_mermaid_export_has_the_three_nodes():
     mermaid = to_mermaid()
-    for node in ("retrieve", "write", "verify"):
+    for node in ("route", "condense", "retrieve", "write", "verify", "answer_from_history", "refuse", "finish"):
         assert node in mermaid
