@@ -21,16 +21,15 @@ import argparse
 import csv
 import re
 import sys
-import time
 import unicodedata
 from datetime import date
 from pathlib import Path
 
 from llama_index.core import VectorStoreIndex
-from llama_index.core.llms import ChatMessage, MessageRole
 
 from ask import SYSTEM_PROMPT, build_prompt
-from config import LLM_MODEL, get_llm, get_vector_store, setup_settings
+from config import LLM_MODEL, LLM_PAUSE_S, get_llm, get_vector_store, setup_settings
+from llm_client import LLMClient
 from eval_retrieval import DEFAULT_CSV, is_hit, load_questions
 
 OUT_OF_SCOPE_CSV = Path("data/out_of_scope_questions.csv")
@@ -63,12 +62,8 @@ def cited_sources(answer: str) -> list[int]:
     return sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)})
 
 
-def ask_llm(llm, question: str, nodes) -> str:
-    response = llm.chat([
-        ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
-        ChatMessage(role=MessageRole.USER, content=build_prompt(question, nodes)),
-    ])
-    return (response.message.content or "").strip()
+def ask_llm(client: LLMClient, question: str, nodes) -> str:
+    return client.ask(SYSTEM_PROMPT, build_prompt(question, nodes))
 
 
 def load_out_of_scope(path: Path) -> list[dict]:
@@ -99,7 +94,6 @@ def main() -> None:
     parser.add_argument("--ids", default=DEFAULT_IDS, help="in-corpus question ids, comma separated")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--max-calls", type=int, default=10, help="hard cap on LLM calls for this run")
-    parser.add_argument("--pause", type=float, default=2.0, help="seconds between two LLM calls")
     parser.add_argument("--dry-run", action="store_true", help="retrieval only, no LLM call")
     parser.add_argument("--out", type=Path, help="results CSV (default: data/eval/answers_<model>_<date>.csv)")
     args = parser.parse_args()
@@ -117,12 +111,13 @@ def main() -> None:
     total = len(wanted) + len(out_of_scope)
     if total > args.max_calls:
         sys.exit(f"[error] {total} LLM calls planned, above --max-calls={args.max_calls}. Nothing was called.")
-    mode = "DRY-RUN, aucun appel LLM" if args.dry_run else f"{total} appels LLM ({LLM_MODEL}), 1 par question, plafond {args.max_calls}"
+    mode = ("DRY-RUN, aucun appel LLM" if args.dry_run else
+            f"{total} appels LLM ({LLM_MODEL}), 1 par question, plafond {args.max_calls}, pause {LLM_PAUSE_S:g} s")
     print(f"[eval] {len(wanted)} questions du corpus + {len(out_of_scope)} hors corpus : {mode}\n", flush=True)
 
     setup_settings()
     retriever = VectorStoreIndex.from_vector_store(get_vector_store()).as_retriever(similarity_top_k=args.k)
-    llm = None if args.dry_run else get_llm()
+    client = None if args.dry_run else LLMClient(get_llm(), LLM_MODEL, pause_s=LLM_PAUSE_S)
 
     jobs = [("corpus", by_id[i]) for i in wanted] + [("hors corpus", r) for r in out_of_scope]
     results, calls, consecutive_errors = [], 0, 0
@@ -139,11 +134,9 @@ def main() -> None:
         elif consecutive_errors >= 2:
             res["verdict"] = "NON EXECUTE (2 erreurs API de suite)"
         else:
-            if calls:
-                time.sleep(args.pause)
             calls += 1
             try:
-                answer = ask_llm(llm, row["question"], nodes)
+                answer = ask_llm(client, row["question"], nodes)
                 consecutive_errors = 0
             except Exception as exc:  # no retry of our own: the client already retries
                 consecutive_errors += 1

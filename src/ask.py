@@ -15,9 +15,8 @@ import sys
 print("[ask] chargement des bibliothèques (10 à 30 s la première fois)...", flush=True)
 
 from llama_index.core import VectorStoreIndex
-from llama_index.core.llms import ChatMessage, MessageRole
-
-from config import LLM_MODEL, get_llm, get_vector_store, setup_settings
+from config import LLM_MODEL, LLM_PAUSE_S, get_llm, get_vector_store, setup_settings
+from llm_client import LLMClient
 
 SYSTEM_PROMPT = """Tu es AeroDoc, un assistant qui répond à des questions sur des documents publics \
 du secteur aéronautique (rapports annuels, spécifications de certification EASA).
@@ -77,17 +76,13 @@ def main() -> None:
 
     print(f"[ask] {len(nodes)} passages trouvés, appel à Gemini ({LLM_MODEL})...", flush=True)
     try:
-        llm = get_llm()
-        response = llm.chat([
-            ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
-            ChatMessage(role=MessageRole.USER, content=prompt),
-        ])
+        client = LLMClient(get_llm(), LLM_MODEL, pause_s=LLM_PAUSE_S)
+        answer = client.ask(SYSTEM_PROMPT, prompt)
     except RuntimeError as exc:  # missing key
         sys.exit(f"[error] {exc}")
     except Exception as exc:  # network, quota, invalid key... (the client already retries 3 times)
         sys.exit(f"[error] Gemini call failed ({LLM_MODEL}): {type(exc).__name__}: {exc}{error_hint(exc)}")
 
-    answer = (response.message.content or "").strip()
     cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
 
     print(f"\nQ: {args.question}\n\n{answer}\n\nSources ({LLM_MODEL}) :")

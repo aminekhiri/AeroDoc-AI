@@ -23,6 +23,8 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))  # 0 = most faithful to the sources
 # Generous on purpose: Gemini "thinking" tokens count against this limit and could cut the answer short.
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
+# Minimum pause between two real LLM calls (flash-lite: 15 requests/min, 500/day).
+LLM_PAUSE_S = float(os.getenv("LLM_PAUSE_S", "5"))
 
 def _required(name: str) -> str:
     """Read a mandatory variable from the environment (.env), with no default."""
@@ -73,17 +75,18 @@ def setup_settings() -> None:
     Settings.llm = None
 
 
-def get_llm():
-    """Gemini chat model used to write the final answer (needs GEMINI_API_KEY in .env)."""
+def get_llm(model: str | None = None):
+    """Gemini chat model (LLM_MODEL by default). Needs GEMINI_API_KEY in .env."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env (see .env.example).")
     from llama_index.llms.google_genai import GoogleGenAI
 
+    model = model or LLM_MODEL
     return GoogleGenAI(
-        model=LLM_MODEL,
+        model=model,
         api_key=GEMINI_API_KEY,
         # gemini-3 models may reject an explicit temperature: leave it to the API default there.
-        temperature=None if "gemini-3" in LLM_MODEL else LLM_TEMPERATURE,
+        temperature=None if "gemini-3" in model else LLM_TEMPERATURE,
         max_tokens=LLM_MAX_TOKENS,
     )
 

@@ -13,4 +13,4 @@ q11,en,What was Safran's consolidated revenue in 2025?,SAFRAN_DEU_2025_US_PDF ME
 q12,en,Within how many seconds must it be possible to evacuate a large aeroplane under CS-25?,easa_cs25_amendment25_en.pdf,480,480,90 seconds (CS 25.803),90
 q13,fr,Quelle altitude cabine maximale une cabine pressurisée doit-elle garantir selon CS-25 ?,easa_cs25_amendment25_en.pdf,514,514,2438 m (8000 ft) à l'altitude maximale d'exploitation (CS 25.841),2~438|8~000
 q14,en,What are the minimum dimensions of a Type I emergency exit?,easa_cs25_amendment25_en.pdf,481,481,61 cm (24 in) wide by 1.22 m (48 in) high (CS 25.807),1_22|122|48
-q15,fr,À quels avions s'appliquent les spécifications de certification CS-25 ?,easa_cs25_amendment25_en.pdf,51,51,Aux grands avions à turbomachines (CS 25.1),turbine|turbomachine
+q15,fr,À quels avions s'appliquent les spécifications de certification CS-25 ?,easa_cs25_amendment25_en.pdf,51,51,Aux grands avions à turbomachines (CS 25.1),turbine

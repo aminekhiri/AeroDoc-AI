@@ -12,7 +12,8 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
 - **Modèle d'embedding retenu : `BAAI/bge-m3`** (décision du 7 octobre, section 9). Le `.env` est déjà dessus. La table `e5-small` est conservée pour comparer plus tard.
 - **LLM** : Google Gemini, modèle **`gemini-3.5-flash-lite`** retenu pour l'instant (limites larges, bien pour les tests ; Mistral abandonné). Voir sections 10 et 11.
 - **Évaluation des réponses** (15 questions + 2 hors corpus, section 11) : **13/15 OK** ; les 2 autres sont les misses de la recherche (q11 : refus honnête, q15 : réponse partielle). Refus hors corpus : 2/2 corrects (en deux lancements différents).
-- **À faire en priorité** : corriger le prompt pour que les refus ne citent aucune source, puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par les deux modèles, sont mises de côté pour un futur reranker ou une recherche hybride.
+- **Score de référence de la chaîne RAG simple** (recherche + une réponse, sans vérification) : **13/15** avec `gemini-3.5-flash-lite` (q11 : refus honnête, q15 : réponse partielle). C'est le chiffre à battre par l'agent LangGraph.
+- **À faire en priorité** : premier graphe LangGraph (rédacteur + vérificateur), puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par la recherche, restent mises de côté pour un reranker ou une recherche hybride.
 
 ---
 
@@ -75,7 +76,7 @@ Base de données : Postgres + pgvector, lancée avec `docker compose up -d` (con
 ## 6. Organisation des dossiers (7 octobre)
 
 ```
-src/       config.py, ingest.py, search.py, ask.py, eval_retrieval.py, eval_answers.py
+src/       config.py, llm_client.py, ingest.py, search.py, ask.py, eval_retrieval.py, eval_answers.py
 scripts/   download_corpus.py
 data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, out_of_scope_questions.csv, eval/
 docs/      roadmap, ce journal
@@ -305,17 +306,20 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 - **Les refus citent des sources** : « Je ne trouve pas cette information dans les documents [1][2][3][4][5] » (q11, o01). Citer cinq sources en refusant est trompeur. À corriger dans le prompt (« en cas de refus, ne cite aucune source »). Le contrôle automatique ne le pénalise pas.
 - **Le mot-clé de q15 est trop indulgent** : `large aeroplane|grands avions` accepte une réponse qui oublie « turbine powered ». Le verdict « BONNE REPONSE » de q15 est donc généreux ; la réponse est en réalité partielle.
 - **Le plafond compte les questions, pas les requêtes HTTP.** Le client Gemini renvoie lui-même une requête quand Google répond 503 (jusqu'à 3 essais). Lors de l'essai avec `3.8`, 6 questions ont généré une quinzaine de requêtes. Pour un plafond exact, il faudrait désactiver ces relances pendant l'évaluation (`max_retries=0`).
-- **Quotas** : un 429 est tombé sur le dernier appel d'un lancement de 17 appels. Hypothèse non vérifiée : limite par minute. À contrôler sur https://ai.dev/rate-limit ; on peut augmenter `--pause`.
+- **Quotas** : un 429 est tombé sur le dernier appel d'un lancement de 17 appels. Hypothèse non vérifiée : limite par minute. À contrôler sur https://ai.dev/rate-limit. *(Depuis : pause de 5 s entre deux appels, `LLM_PAUSE_S`.)*
 
 ### Corrections faites ensuite (sans appel LLM)
 
 - **Prompt** : « si les sources ne contiennent pas l'information, réponds uniquement *Je ne trouve pas cette information dans les documents.*, sans aucune citation `[n]` ni explication ».
-- **q15** : le mot-clé exige maintenant « turbine » ou « turbomachine » (l'ancienne réponse partielle « grands aéronefs » ne passe plus).
+- **q15** : le mot-clé exige maintenant « turbine » (l'ancienne réponse partielle « grands aéronefs » ne passe plus).
+- **Pause entre deux appels** : `LLM_PAUSE_S=5` dans `.env` et `.env.example` (limite de flash-lite : 15 requêtes/min, 500/jour). Elle est appliquée par `src/llm_client.py`, le client commun à **tous** les scripts qui appellent le LLM (`ask.py`, `eval_answers.py`, puis l'agent). L'ancienne option `--pause` d'`eval_answers.py` est supprimée. La limite de 500/jour n'est pas contrôlée par le code.
 - **`eval_answers.py`** : une question hors corpus n'est réussie que si le modèle refuse **et** ne cite aucune source ; un refus avec citations donne `REFUS MAIS CITE DES SOURCES`. La synthèse affiche la part de refus qui citent des sources.
 - Pas encore corrigé : le plafond d'appels compte les questions et non les requêtes HTTP.
 - **Ces corrections n'ont pas été testées sur le vrai modèle** : seuls la syntaxe, le prompt affiché (`--show-prompt`), des tests hors réseau et un essai à blanc ont été faits. Les chiffres de la section ci-dessus ont été obtenus **avant** ces changements.
 
 ### Décision
+
+**Score de référence de la chaîne RAG simple : 13/15** (q11 refus honnête, q15 réponse partielle), mesuré avant les corrections ci-dessus.
 
 **`gemini-3.5-flash-lite` est retenu pour l'instant** : ses limites sont larges, ce qui convient aux tests et aux évaluations, et c'est le seul qui a permis des mesures complètes. Valeur par défaut dans `src/config.py` et `.env.example`. La question sera à rouvrir pour la production, avec un modèle plus capable si la qualité des réponses l'exige.
 
@@ -341,8 +345,10 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 - [x] Brancher un LLM (Gemini) et générer des réponses avec citations (section 10).
 - [x] Évaluer les réponses du LLM : 15 questions + 2 hors corpus (section 11).
 - [x] Prompt corrigé (`src/ask.py`) : un refus ne doit citer aucune source ni ajouter d'explication. **Effet non mesuré** : aucun appel LLM n'a été fait depuis.
-- [x] Mot-clé de q15 durci (`turbine|turbomachine`), et `eval_answers.py` compte désormais un refus qui cite des sources comme un échec (`REFUS MAIS CITE DES SOURCES`). Vérifié hors réseau, pas encore sur un vrai lancement.
+- [x] Mot-clé de q15 durci (`turbine`), et `eval_answers.py` compte désormais un refus qui cite des sources comme un échec (`REFUS MAIS CITE DES SOURCES`). Vérifié hors réseau, pas encore sur un vrai lancement.
 - [ ] Relancer l'évaluation complète (17 appels) pour mesurer l'effet de ces corrections, et faire passer o02 dans le même lancement que les autres. À faire quand le quota Gemini le permet (https://ai.dev/rate-limit).
+- [x] Pause de 5 s entre deux appels LLM (`LLM_PAUSE_S`), commune à tous les scripts.
+- [ ] Premier graphe LangGraph : rédacteur + vérificateur.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
