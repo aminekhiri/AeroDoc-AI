@@ -2,7 +2,7 @@
 
 Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil de l'eau.
 
-## État actuel (8 octobre 2026)
+## État actuel (10 octobre 2026)
 
 - **Étape de la roadmap** : fin de l'étape 2 (Ingestion & RAG) : la recherche fonctionne et le LLM (Gemini) écrit des réponses avec citations (`src/ask.py`, section 10). Pas encore de routeur ni de SQL.
 - **Corpus** : 4 PDF, 2551 pages, 5867 passages indexés.
@@ -13,7 +13,8 @@ Trace de ce qui a été fait dans le projet, dans l'ordre. À compléter au fil 
 - **LLM** : Google Gemini, modèle **`gemini-3.5-flash-lite`** retenu pour l'instant (limites larges, bien pour les tests ; Mistral abandonné). Voir sections 10 et 11.
 - **Évaluation des réponses** (15 questions + 2 hors corpus, section 11) : **13/15 OK** ; les 2 autres sont les misses de la recherche (q11 : refus honnête, q15 : réponse partielle). Refus hors corpus : 2/2 corrects (en deux lancements différents).
 - **Score de référence de la chaîne RAG simple** (recherche + une réponse, sans vérification) : **13/15** avec `gemini-3.5-flash-lite` (q11 : refus honnête, q15 : réponse partielle). C'est le chiffre à battre par l'agent LangGraph.
-- **À faire en priorité** : premier graphe LangGraph (rédacteur + vérificateur), puis étape 3 (SQL et agents). Les questions q11 et q15, ratées par la recherche, restent mises de côté pour un reranker ou une recherche hybride.
+- **Agent LangGraph** (section 12) : graphe retrieve → write → verify, avec une correction possible (2 essais max). 13 tests verts sans réseau. Essai réel sur 3 questions : 3 brouillons acceptés au 1er essai, aucune correction déclenchée.
+- **À faire en priorité** : mesurer l'agent sur les 15 questions et le comparer aux 13/15 de la chaîne simple, puis étape 3 (SQL). q11 et q15 restent des problèmes de recherche (reranker ou recherche hybride).
 
 ---
 
@@ -76,10 +77,13 @@ Base de données : Postgres + pgvector, lancée avec `docker compose up -d` (con
 ## 6. Organisation des dossiers (7 octobre)
 
 ```
-src/       config.py, llm_client.py, ingest.py, search.py, ask.py, eval_retrieval.py, eval_answers.py
+src/       config.py, prompts.py, llm_client.py, ingest.py, search.py, ask.py, ask_agent.py,
+           eval_retrieval.py, eval_answers.py
+src/agent/ state.py, nodes.py, graph.py (graphe LangGraph)
+tests/     test_graph.py (pytest, sans réseau)
 scripts/   download_corpus.py
 data/      raw/ (PDF, non suivis), manifest.csv, retrieval_questions.csv, out_of_scope_questions.csv, eval/
-docs/      roadmap, ce journal
+docs/      roadmap, ce journal, graph.md (schéma du graphe)
 ```
 
 Les commandes se lancent depuis la racine du projet, car les chemins (`data/raw`) y sont relatifs.
@@ -323,6 +327,62 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 
 **`gemini-3.5-flash-lite` est retenu pour l'instant** : ses limites sont larges, ce qui convient aux tests et aux évaluations, et c'est le seul qui a permis des mesures complètes. Valeur par défaut dans `src/config.py` et `.env.example`. La question sera à rouvrir pour la production, avec un modèle plus capable si la qualité des réponses l'exige.
 
+## 12. Premier graphe LangGraph : rédacteur + vérificateur (10 octobre)
+
+### Ce qui a été fait
+
+```mermaid
+graph TD;
+  start([début]) --> retrieve --> write --> verify
+  verify -. "a_corriger et essais < 2" .-> write
+  verify -. "sinon" .-> fin([fin])
+```
+
+Schéma exact, généré depuis le graphe compilé : `docs/graph.md` (`python src/ask_agent.py --mermaid docs/graph.md`).
+
+- `src/agent/state.py` : état partagé (question, passages, brouillon, verdict, commentaire du vérificateur, nombre d'essais, historique des essais).
+- `src/agent/nodes.py` :
+  1. **retrieve** : la même recherche qu'`ask.py` (bge-m3 + pgvector), injectée dans le nœud.
+  2. **write** : réponse avec citations `[n]`, ou « Je ne trouve pas cette information dans les documents. » sans source (même prompt qu'`ask.py`). Au 2e essai, le rédacteur reçoit le commentaire du vérificateur et son brouillon précédent.
+  3. **verify** : renvoie `{"verdict": "ok" | "a_corriger", "probleme": "..."}`. Il contrôle que chaque chiffre est dans une source citée, que la réponse est complète, qu'une liste présentée comme complète a bien somme des parties = total, et qu'un refus ne cite aucune source. Un JSON illisible est considéré comme `ok` et signalé dans les logs.
+- `src/agent/graph.py` : retrieve → write → verify ; retour à write si `a_corriger` et moins de 2 essais ; sinon fin. La réponse finale est le dernier brouillon. Si le vérificateur refuse encore après 2 essais, `ask_agent.py` l'affiche tel quel avec un avertissement.
+- `src/ask_agent.py` : même interface qu'`ask.py`, passe par le graphe et affiche à chaque étape le brouillon, le verdict et le commentaire.
+- **LLM injectable** : les nœuds reçoivent un objet avec `.ask(system, user)`. En production, c'est un `LLMClient` ; dans les tests, un FakeLLM. `WRITER_MODEL` et `VERIFIER_MODEL` (dans `.env`, les deux sur `gemini-3.5-flash-lite`) permettent deux modèles différents.
+
+### Changements autour du graphe
+
+- **Prompts regroupés** dans `src/prompts.py` (prompt du rédacteur, prompt du vérificateur, construction des sources). `ask.py`, `eval_answers.py` et l'agent l'utilisent : aucun prompt n'est dupliqué. Vérifié : le prompt envoyé par `ask.py` est identique, au caractère près, à celui d'avant. Le score de référence de 13/15 reste donc comparable.
+- **Cache des réponses LLM** : il n'existait pas encore, il a été créé dans `src/llm_client.py`. Un fichier JSON par réponse dans `data/cache/llm/` (ignoré par Git), avec comme clé le modèle, le prompt système et le prompt utilisateur. Changer de modèle ou de prompt ne réutilise donc jamais une ancienne réponse. Utilisé par `ask.py`, `eval_answers.py` et `ask_agent.py`. `--no-cache` le contourne pour un lancement, `LLM_CACHE=0` le désactive partout.
+- `requirements.txt` : `langgraph` et `pytest`.
+
+### Tests (`tests/test_graph.py`, pytest, sans réseau ni base)
+
+`python -m pytest` : **13 tests verts** en quelques secondes.
+
+1. Réponse correcte → `ok` → fin en 1 essai.
+2. Liste incomplète (68 + 571 + 32 = 671 ≠ 735) → `a_corriger` → réécriture, avec le commentaire transmis au rédacteur → `ok`.
+3. Vérificateur qui refuse 2 fois → arrêt après 2 essais (un 3e appel au rédacteur ferait échouer le test).
+
+Aussi testés : JSON illisible → `ok` et avertissement dans les logs ; refus sans source accepté ; lecture du verdict (bloc de code ```` ```json ````, texte autour, verdict inconnu, JSON tronqué) ; le cache évite un 2e appel et le modèle fait partie de la clé ; export Mermaid.
+
+### Essai avec Gemini (q01, q15, o01)
+
+| Question | Brouillon (essai 1) | Verdict | Commentaire | Réponse finale |
+|---|---|---|---|---|
+| q01 livraisons Airbus 2023 | « En 2023, Airbus a livré 735 avions [1][4][5]. » | ok | aucun | identique au brouillon |
+| q15 domaine de CS-25 | « … s'appliquent aux grands aéronefs (large aeroplanes) [4][5]. » | ok | aucun | identique au brouillon |
+| o01 action Boeing (hors corpus) | « Je ne trouve pas cette information dans les documents. » | ok | aucun | identique, **sans citation** |
+
+6 appels API au total (2 par question), plus un premier essai de q01 interrompu par une coupure réseau de Google (`RemoteProtocolError : Server disconnected`), que les relances automatiques du client n'ont pas couvert ; relancé une fois avec succès.
+
+### Ce qu'on en retient
+
+- **Le vérificateur n'a rien corrigé sur ces 3 questions** : les 3 brouillons ont été acceptés au 1er essai. La boucle de correction n'est donc démontrée que par les tests (FakeLLM), pas encore sur le vrai modèle.
+- **q15 reste incomplète** (« turbine powered » manque) et le vérificateur l'accepte. Il ne contrôle la réponse **que par rapport aux passages reçus** : la p.51 (CS 25.1) n'ayant pas été retrouvée, rien ne lui permet de voir le manque. Les pages citées (819, 184) ne parlent de « Large Aeroplanes » que dans leur en-tête courant : appui faible. Le goulot d'étranglement reste la **recherche**, pas la rédaction.
+- **o01 : le refus ne cite plus de source**, comme le demande le prompt corrigé à l'étape 1. Première observation sur le vrai modèle, sur un seul cas.
+- **Coût** : chaque question coûte au moins 2 appels (rédaction + vérification), jusqu'à 4. Avec la limite de 500 requêtes/jour, cela fait entre 125 et 250 questions par jour.
+- **Pas encore mesuré** : l'agent sur les 15 questions, à comparer avec les 13/15 de la chaîne simple.
+
 ---
 
 ## Pistes pour améliorer le retrieval
@@ -348,7 +408,8 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 - [x] Mot-clé de q15 durci (`turbine`), et `eval_answers.py` compte désormais un refus qui cite des sources comme un échec (`REFUS MAIS CITE DES SOURCES`). Vérifié hors réseau, pas encore sur un vrai lancement.
 - [ ] Relancer l'évaluation complète (17 appels) pour mesurer l'effet de ces corrections, et faire passer o02 dans le même lancement que les autres. À faire quand le quota Gemini le permet (https://ai.dev/rate-limit).
 - [x] Pause de 5 s entre deux appels LLM (`LLM_PAUSE_S`), commune à tous les scripts.
-- [ ] Premier graphe LangGraph : rédacteur + vérificateur.
+- [x] Premier graphe LangGraph : rédacteur + vérificateur (section 12), avec cache des réponses LLM et tests pytest.
+- [ ] Évaluer l'agent sur les 15 questions + 2 hors corpus (2 à 4 appels par question) et comparer aux 13/15 de la chaîne simple.
 - [ ] Reranker ou recherche hybride, pour q11 et q15 (plus tard).
 - [ ] Étape 3 : Text-to-SQL avec DuckDB, agents LangGraph (routeur, rédacteur, vérificateur).
 - [ ] Étape 4 : évaluation complète avec MLflow, API FastAPI, Docker, déploiement sur Cloud Run (base Postgres hébergée, PyTorch CPU dans l'image, modèle inclus dans l'image).
@@ -356,7 +417,10 @@ Les deux questions non réussies sont **les deux misses de la recherche** (q11, 
 ## Historique des commits (local)
 
 ```
-(ce commit) eval: answer evaluation results (gemini-3.5-flash-lite)
+(ce commit) feat: first LangGraph agent (writer + verifier)
+6b4c5e9 eval: close the simple RAG baseline (stricter q15, shared LLM pause)
+0eb2a75 evaluation of the llm model (gemini-3.5-flash-lite) + update of the journal
+2df27ba eval: answer evaluation results (gemini-3.5-flash-lite)
 c8cf6ac config: default LLM to gemini-3.5-flash-lite
 c4f6dfd eval: add LLM answer evaluation script
 9123250 docs: journal, LLM generation with Gemini

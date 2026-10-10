@@ -27,9 +27,9 @@ from pathlib import Path
 
 from llama_index.core import VectorStoreIndex
 
-from ask import SYSTEM_PROMPT, build_prompt
-from config import LLM_MODEL, LLM_PAUSE_S, get_llm, get_vector_store, setup_settings
-from llm_client import LLMClient
+from config import LLM_MODEL, LLM_PAUSE_S, get_vector_store, setup_settings
+from llm_client import LLMClient, make_client
+from prompts import SYSTEM_PROMPT, build_prompt, to_passages
 from eval_retrieval import DEFAULT_CSV, is_hit, load_questions
 
 OUT_OF_SCOPE_CSV = Path("data/out_of_scope_questions.csv")
@@ -63,7 +63,7 @@ def cited_sources(answer: str) -> list[int]:
 
 
 def ask_llm(client: LLMClient, question: str, nodes) -> str:
-    return client.ask(SYSTEM_PROMPT, build_prompt(question, nodes))
+    return client.ask(SYSTEM_PROMPT, build_prompt(question, to_passages(nodes)))
 
 
 def load_out_of_scope(path: Path) -> list[dict]:
@@ -95,6 +95,7 @@ def main() -> None:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--max-calls", type=int, default=10, help="hard cap on LLM calls for this run")
     parser.add_argument("--dry-run", action="store_true", help="retrieval only, no LLM call")
+    parser.add_argument("--no-cache", action="store_true", help="always call the API, ignore the answer cache")
     parser.add_argument("--out", type=Path, help="results CSV (default: data/eval/answers_<model>_<date>.csv)")
     args = parser.parse_args()
 
@@ -117,7 +118,7 @@ def main() -> None:
 
     setup_settings()
     retriever = VectorStoreIndex.from_vector_store(get_vector_store()).as_retriever(similarity_top_k=args.k)
-    client = None if args.dry_run else LLMClient(get_llm(), LLM_MODEL, pause_s=LLM_PAUSE_S)
+    client = None if args.dry_run else make_client(use_cache=not args.no_cache)
 
     jobs = [("corpus", by_id[i]) for i in wanted] + [("hors corpus", r) for r in out_of_scope]
     results, calls, consecutive_errors = [], 0, 0
@@ -165,7 +166,8 @@ def main() -> None:
     done = [r for r in results if r["verdict"] and not r["verdict"].startswith(("ERREUR", "NON EXEC", "DRY"))]
     corpus = [r for r in done if r["kind"] == "corpus"]
     oos = [r for r in done if r["kind"] == "hors corpus"]
-    print(f"\n=== Appels LLM effectues : {calls} (plafond {args.max_calls}) ===")
+    served = f", dont {client.cache_hits} servies par le cache (sans appel API)" if client and client.cache_hits else ""
+    print(f"\n=== Questions envoyees au LLM : {calls} (plafond {args.max_calls}){served} ===")
     if args.dry_run:
         hits = sum(bool(r["retrieval_hit"]) for r in results if r["kind"] == "corpus")
         print(f"Recherche seule : bonne page dans le top {args.k} pour {hits}/{len(wanted)} questions du corpus.")

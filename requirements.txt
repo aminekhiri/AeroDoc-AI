@@ -5,3 +5,7 @@ llama-index-readers-file
 sentence-transformers
 python-dotenv
 llama-index-llms-google-genai
+
+# Agent (LangGraph) and tests
+langgraph
+pytest
